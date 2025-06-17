@@ -24,10 +24,12 @@
 	/* [Messages] */
 	#define NUM_PI_MSGS         16
 	#define NUM_GFX_MSGS        8
-	#define NUM_SI_MSGS         4
+	
+	#define SCHEDULER_DONE		1
+	#define SCHEDULER_RETRACE	2
+	#define SCHEDULER_PRENMI	3
 
 	/* [Graphics] */
-	#define MAX_OBJECTS         128     // Maximum objects drawn at once
 	#define GL_SIZE             2048    // Dynamic display list size
 	#define FIFO_SIZE           8192    // RDP stack size
 
@@ -36,6 +38,8 @@
 	
 	#define AUDIO_SIZE          0x60000
 	#define AUDIO_ADDR          (CFB1_ADDR-AUDIO_SIZE)
+	
+	#define AUDIO_BITRATE       44100
 	
 	// Place framebuffers at end of RAM
 	#define CFB_SIZE            SCREEN_W*SCREEN_H*2
