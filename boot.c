@@ -3,19 +3,22 @@
 
 #include "debug.h"
 #include "config.h"
-#include "stages.h"
+#include "helpers/gfx.h"
+#include "helpers/reader.h"
+#include "helpers/text.h"
+#include "stages/stages.h"
 
 /* ============= PROTOTYPES ============= */
 
-static OSPiHandle* rom_handle;
-
 static void idle(void *);
 static void main(void *);
+extern void crash(void *);
 
 // Stacks
 u64 boot_stack[STACK_SIZE_BOOT / sizeof(u64)];
 static u64 idle_stack[STACK_SIZE_IDLE / sizeof(u64)];
 static u64 main_stack[STACK_SIZE_MAIN / sizeof(u64)];
+static u64 crash_stack[STACK_SIZE_CRASH / sizeof(u64)];
 static u64 scheduler_stack[OS_SC_STACKSIZE / sizeof(u64)];
 
 // F3DEX2 matrix stack
@@ -27,6 +30,7 @@ static u64 yield_buffer[OS_YIELD_DATA_SIZE] __attribute__((aligned(16)));
 
 OSThread idle_thread;
 OSThread main_thread;
+OSThread crash_thread;
 
 /* =============== DEBUG ================ */
 
@@ -40,11 +44,12 @@ u8  rdbSendBuf[RDB_SEND_BUF_SIZE];
 /* ============== MESSAGES ============== */
 
 // Required for hardware
-OSMesg msg_pi[NUM_PI_MSGS];
 OSMesg msg_gfx[NUM_GFX_MSGS];
-OSMesg msg_dma;
-OSMesgQueue msgQ_pi, msgQ_gfx, msgQ_dma;
-OSIoMesg msgIo_dma;
+OSMesgQueue msgQ_gfx;
+
+// Crash screen
+OSMesg msg_crash;
+OSMesgQueue msgQ_crash;
 
 /* ============= SCHEDULER ============== */
 
@@ -60,12 +65,12 @@ void init_scheduler()
 	u8 video;
 	u8 highres;
 
-	#if SCREEN_W == 320 && SCREEN_H == 240
-		highres = 0;
-	#elif SCREEN_W == 640 && SCREEN_H == 480
+	#if (SCREEN_W == 640 && SCREEN_H == 480)
 		highres = 1;
+	#elif (SCREEN_W == 320 && SCREEN_H == 240)
+		highres = 0;
 	#else
-		#error "Invalid resolution"
+		#error "Invalid screen resolution"
 	#endif
 
 	switch (osTvType) {
@@ -131,17 +136,21 @@ void boot(void* arg)
 
 static void idle(void *arg)
 {
-	// Init PI Messager for access to ROM
-	osCreatePiManager((OSPri) OS_PRIORITY_PIMGR, &msgQ_pi, msg_pi, NUM_PI_MSGS);
-	rom_handle = osCartRomInit();
-
 	#if DEBUG_MODE
     osInitRdb(rdbSendBuf, RDB_SEND_BUF_SIZE);
 	#endif
 
+	// Initialize Pi Manager/DMA
+	init_reader();
+
 	// Initialize main thread
 	osCreateThread(&main_thread, ID_MAIN, main, arg, &main_stack[STACK_SIZE_MAIN / sizeof(u64)], PR_MAIN);
 	osStartThread(&main_thread);
+
+	// Initialize crash screen queue and thread
+    osCreateMesgQueue(&msgQ_crash, &msg_crash, 1);
+	osCreateThread(&crash_thread, ID_CRASH, crash, NULL, &crash_stack[STACK_SIZE_CRASH / sizeof(u64)], PR_CRASH);
+	osStartThread(&crash_thread);
 
 	// Relinquish CPU
 	osSetThreadPri(NULL, 0);
@@ -152,27 +161,40 @@ static void idle(void *arg)
 
 static void main(void *arg)
 {
-	int orig_stage = 0;
-	stage = 0;
-	
+	// Initialize scheduler
 	init_scheduler();
 	
-	init_stage:
-	switch (stage)
-	{
-		default:
-			stage00_init();
-			break;
-	}
+	read_all_segments();
+	
+	// Initialize current stage
+	target_stage = 0;
+	
+	// Go into permanent loop, initialize target stage if it is loaded
 
-	while (orig_stage == stage)
+	while (1)
 	{
+		switch (target_stage)
+		{
+			case 0:
+				stage00_init();
+				break;
+
+			case 1:
+				stage01_init();
+				break;
+		}
+
+		current_stage = target_stage;
+		
+		loop:
 		osRecvMesg(&msgQ_gfx, (OSMesg *)&sched_msg, OS_MESG_BLOCK);
 
 		switch (sched_msg->type)
 		{
 			case OS_SC_PRE_NMI_MSG:
+				target_stage = -1;
 				osViSetYScale(1.0);
+				osSpTaskYield();
 				osViBlack(1);
 				osAfterPreNMI();
 				break;
@@ -181,16 +203,31 @@ static void main(void *arg)
 				break;
 
 			case OS_SC_RETRACE_MSG:
-				switch (stage)
+				switch (current_stage)
 				{
-					default:
+					case -1:
+						osViBlack(0);
+						init_gfx();
+						clear_zfb();
+						clear_cfb(0, 0, 0);
+						print("Rebooting...");
+						finish_gfx();
+						break;
+
+					case 0:
 						stage00_update();
 						stage00_render();
+						break;
+
+					case 1:
+						stage01_update();
+						stage01_render();
 						break;
 				}
 				break;
 		}
+		
+		if (target_stage == current_stage && target_stage >= 0)
+			goto loop;
 	}
-	
-	goto init_stage;
 }

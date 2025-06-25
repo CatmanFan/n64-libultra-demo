@@ -1,21 +1,22 @@
 #include <ultra64.h>
-#include "config.h"
 
+#include "config.h"
+#include "types.h"
 #include "helpers/gfx.h"
 
+#define MAX_VTX 128
+Mtx vtx[MAX_VTX];
 int vtx_count;
 
-#define MAX_OBJ 128
-static Mtx vtx[MAX_OBJ];
-static Mtx projection;
-static Mtx viewing;
+Mtx projection;
+Mtx viewing;
 
-void init_world(simpleObj camera, int x, int y, int z, float fov)
+void init_world(simpleObj cam, int x, int y, int z, float fov)
 {
 	u16 pnorm;
 
-	vecSet(camera.pos, x, y, z);
-	vecSet(camera.mov, 0, 0, 0);
+	vecSet(cam.pos, x, y, z);
+	vecSet(cam.mov, 0, 0, 0);
 
 	guPerspective(&projection, &pnorm, fov, 1.3333333, 50.0, 5000.0, 0.5);
 	gSPPerspNormalize(glistp++, pnorm);
@@ -25,17 +26,19 @@ void init_world(simpleObj camera, int x, int y, int z, float fov)
 		&viewing,
 		
 		// Position coordinates
-		camera.pos[0],
-		camera.pos[1],
-		camera.pos[2],
+		cam.pos[0],
+		cam.pos[1],
+		cam.pos[2],
 		
 		// Destination coordinates
-		camera.mov[0],
-		camera.mov[1],
-		camera.mov[2],
+		cam.mov[0],
+		cam.mov[1],
+		cam.mov[2],
 		
-		// Up
-		0, 0, 1
+		// Up-facing coordinates
+		0,
+		1,
+		0
 	);
 
 	gSPMatrix(glistp++, OS_K0_TO_PHYSICAL(&projection), G_MTX_PROJECTION | G_MTX_LOAD | G_MTX_NOPUSH);
@@ -44,22 +47,23 @@ void init_world(simpleObj camera, int x, int y, int z, float fov)
 
 void render_object(Gfx* obj_dl, vec3_t* obj_pos, vec3_t* obj_rot, float size)
 {
-	if (vtx_count >= MAX_OBJ) return;
-	
+	if (vtx_count >= MAX_VTX) return;
+
 	guPosition
 	(
 		&vtx[vtx_count],
-		90+(*obj_rot)[0],
+		(*obj_rot)[0],
 		(*obj_rot)[1],
-		(*obj_rot)[2]-90+270,
+		(*obj_rot)[2],
 		size,
 		(*obj_pos)[0],
 		(*obj_pos)[1],
 		(*obj_pos)[2]
 	);
+
 	gSPMatrix(glistp++, OS_K0_TO_PHYSICAL(&vtx[vtx_count]), G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
-	
+
 	gSPDisplayList(glistp++, obj_dl);
-	
+
 	vtx_count++;
 }

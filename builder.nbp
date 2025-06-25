@@ -1,7 +1,7 @@
 [N64Project]
 TargetName=homebrew.n64
 BuildFolder=build
-ROMHeader_Name=MY HOMEBREW GAME
+ROMHeader_Name=TEST
 ROMHeader_Manufacturer=N
 ROMHeader_ID=HB
 ROMHeader_Country=E

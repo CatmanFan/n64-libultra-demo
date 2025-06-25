@@ -1,6 +1,7 @@
 #include <ultra64.h>
-#include <PR/sched.h>
 #include <assert.h>
+#include <PR/sched.h>
+#include <PR/sp.h>
 
 #include "config.h"
 #include "helpers/types.h"
@@ -92,7 +93,7 @@ void init_gfx()
 {
 	// Reset 3D objects counter
 	vtx_count = 0;
-	
+
 	// Init display list
 	glistp = glist;
 
@@ -111,26 +112,26 @@ void finish_gfx()
 	// Finish the display list
 	gDPFullSync(glistp++);
 	gSPEndDisplayList(glistp++);
-	
+
 	// Normally there should be an assert function to check the display list limit here
 	assert((glistp - glist) < GL_SIZE);
-	
+
 	// Point scheduler task to display list and set framebuffer
 	sched_task.list.t.data_ptr = (u64 *)glist;
 	sched_task.list.t.data_size = (s32)(glistp - glist) * sizeof(Gfx);
 	sched_task.framebuffer = cfb[cfb_current];
-	
+
 	// Writeback cache lines so that the RCP can read the up-to-date data
 	osWritebackDCacheAll();
-	
+
 	// Send task
 	osSendMesg(osScGetCmdQ(&scheduler), (OSMesg)&sched_task, OS_MESG_BLOCK);
-	
+
 	// Wait for rendering to finish
 	do {
 	osRecvMesg(&msgQ_gfx, (OSMesg *)&sched_msg, OS_MESG_BLOCK);
 	} while (sched_msg->type != OS_SC_DONE_MSG);
-	
+
 	// Swap framebuffer
 	cfb_current ^= 1;
 }
@@ -144,6 +145,72 @@ void clear_cfb(int r, int g, int b)
 {
 	dl_clear_cfb[0] = (Gfx)gsDPSetColorImage(G_IM_FMT_RGBA, G_IM_SIZ_16b, SCREEN_W, OS_K0_TO_PHYSICAL(cfb[cfb_current]));
 	dl_clear_cfb[2] = (Gfx)gsDPSetFillColor(GPACK_RGBA5551(r, g, b, 1) << 16 | GPACK_RGBA5551(r, g, b, 1));
-	
+
 	gSPDisplayList(glistp++, dl_clear_cfb);
+}
+
+
+/* ============== SPRITES =============== */
+
+void init_sprite() // Gfx **dlp
+{
+    // Gfx* dl;
+    // dl = *dlp;
+    // spInit(&dl);
+    spInit(&glistp);
+}
+
+void draw_sprite(Sprite *sp)
+{
+	gSPDisplayList(glistp++, spDraw(sp));
+}
+
+void finish_sprite()
+{
+    spFinish(&glistp);
+    glistp -= 1;
+}
+
+/* =========== CPU RENDERING ============ */
+
+// GPACK_RGBA5551(r, g, b, 1)
+void draw_pixel(int x, int y, unsigned int color)
+{
+	// Set beginning CFB pointer
+	#if (SCREEN_W == 640 && SCREEN_H == 480)
+	u32 *ptr = (u32 *)
+	#else
+	u16 *ptr = (u16 *)
+	#endif
+	osViGetCurrentFramebuffer() + (y * SCREEN_W) + x;
+	
+	// Write color directly
+    *ptr = color;
+}
+
+void draw_rectangle(int x, int y, int w, int h)
+{
+	// Set pointer X,Y coordinates
+	int ptr_x, ptr_y;
+	
+	// Set beginning CFB pointer
+	#if (SCREEN_W == 640 && SCREEN_H == 480)
+	u32 *ptr = (u32 *)
+	#else
+	u16 *ptr = (u16 *)
+	#endif
+	osViGetCurrentFramebuffer() + (y * SCREEN_W) + x;
+
+	// Write color directly
+	for (ptr_y = y; ptr_y < y + h; ptr_y++)
+	{
+		for (ptr_x = x; ptr_x < x + w; ptr_x++)
+		{
+            // 0xe738 = 0b1110011100111000
+            *ptr = ((*ptr & 0xe738) >> 2) | 1;
+            ptr++;
+		}
+
+		ptr += SCREEN_W - w;
+	}
 }

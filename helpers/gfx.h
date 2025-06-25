@@ -10,4 +10,11 @@ extern void finish_gfx();
 extern void clear_zfb();
 extern void clear_cfb(int r, int g, int b);
 
+extern void init_sprite();
+extern void draw_sprite(Sprite *sp);
+extern void finish_sprite();
+
+extern void draw_pixel(int x, int y, unsigned int color);
+extern void draw_rectangle(int x, int y, int w, int h);
+
 #endif

@@ -14,8 +14,21 @@ endseg
 /* beginseg
 	name "static"
 	flags OBJECT
-	number SEG_STATIC
+	number 2
 	include "build/static.o"
+endseg */
+
+/* beginseg
+	name "texture"
+	flags OBJECT
+	number 3
+	include "build/texture.o"
+endseg */
+
+/* beginseg
+	name "font"
+	flags RAW
+	include "assets/textures/font.bin"
 endseg */
 
 beginwave

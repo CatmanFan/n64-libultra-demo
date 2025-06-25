@@ -2,7 +2,7 @@
 #define __TYPES_H__
 
 /* ================================= */
-/* =         3D Graphics           = */
+/*           3D Graphics             */
 /* ================================= */
 
 // 3-point vector
@@ -19,12 +19,25 @@ typedef struct {
 	vec3_t pos;
 	vec3_t mov; // For camera interpolation
 	vec3_t rot;
+	Gfx*   dl;
 } simpleObj;
 
 #define vecSet(V,X,Y,Z) V[0] = X; V[1] = Y; V[2] = Z;
 
 /* ================================= */
-/* =         2D Graphics           = */
+/*           2D Graphics             */
 /* ================================= */
+
+typedef struct {
+	unsigned long chr;
+	int glyph_index;
+	int width;
+	int height;
+} Glyph;
+
+typedef struct {
+	u8 img;
+	Glyph glyphs;
+} Font;
 
 #endif
