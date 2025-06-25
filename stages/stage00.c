@@ -39,7 +39,6 @@ static int frame;
 
 /* ========== STATIC FUNCTIONS ========== */
 
-#include <os_internal.h>
 static void die()
 {
 	// TLB exception on load/instruction fetch

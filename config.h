@@ -1,8 +1,8 @@
 #ifndef __CONFIG_H__
 #define __CONFIG_H__
 
-	#define SCREEN_W 320
-	#define SCREEN_H 240
+	#define SCREEN_W 640
+	#define SCREEN_H 480
 
 	/* [Stack sizes] */
 	#define STACK_SIZE          0x2000

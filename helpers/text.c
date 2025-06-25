@@ -6,49 +6,9 @@
 #include "config.h"
 #include "helpers/gfx.h"
 #include "helpers/types.h"
-#include "assets/textures/terminus.h"
+#include "assets/fonts/terminus.h"
 
-u32 utf8_to_cp(const char **str)
-{
-    u8 *s = (u8 *)*str;
-    u32 c = *s++;
-
-    if (c < 0x80)
-	{
-        *str = (const char*)s;
-		return c;
-	}
-
-    if (c < 0xC0)
-	{
-        *str = (const char*)s;
-		return 0xFFFD;
-	}
-
-    if (c < 0xE0)
-	{
-		c = ((c & 0x1F) << 6) | (*s++ & 0x3F);
-        *str = (const char*)s;
-        return c;
-    }
-
-    if (c < 0xF0)
-	{
-        c = ((c & 0x0F) << 12); c |= ((*s++ & 0x3F) << 6); c |= (*s++ & 0x3F);
-        *str = (const char*)s;
-        return c;
-    }
-
-    if (c < 0xF8)
-	{
-        c = ((c & 0x07) << 18); c |= ((*s++ & 0x3F) << 12); c |= ((*s++ & 0x3F) << 6); c |= (*s++ & 0x3F);
-        *str = (const char*)s;
-        return c;
-    }
-
-	*str = (const char*)s;
-	return 0xFFFD;
-}
+extern u32 utf8_to_cp(const char **str);
 
 static Bitmap *setup_font(Glyph glyphs[], int n, u8 img[][n])
 {
