@@ -1,0 +1,152 @@
+#include <ultra64.h>
+#include <PR/sp.h>
+#include <stdarg.h>
+#include <stdlib.h>
+
+#include "config.h"
+
+#include "helpers/types.h"
+#include "helpers/gfx.h"
+
+/* =============== ASSETS =============== */
+
+#include "assets/fonts/terminus.h"
+
+/* ============= PROTOTYPES ============= */
+
+extern u32 utf8_to_cp(const char **str);
+
+/* ============= FUNCTIONS ============== */
+
+static Bitmap *setup_font(Glyph glyphs[], int n, u8 img[][n])
+{
+	int size = sizeof(glyphs);
+	Bitmap *bmp = malloc(sizeof(Bitmap) * size);
+
+	int i = 0;
+
+	for (i = 0; i < size; i++)
+	{
+		bmp[i].width = glyphs[i].width;
+		bmp[i].width_img = glyphs[i].width;
+		bmp[i].s = 0;
+		bmp[i].t = 0;
+		bmp[i].buf = img[glyphs[i].glyph_index];
+		bmp[i].actualHeight = glyphs[i].height;
+		bmp[i].LUToffset = 0;
+	}
+
+	return bmp;
+}
+
+static void draw_text(Glyph glyphs[], int n, u8 img[][n], const char* txt, va_list args)
+{
+	Bitmap *bmp = setup_font(glyphs, n, img);
+	Sprite *sp;
+	Gfx sp_dl[NUM_DL(sizeof(bmp) / sizeof(Bitmap))];
+
+	int x_min = 15;
+	int y_min = 15;
+	int screen_x = x_min;
+	int screen_y = y_min;
+	char string[300];
+
+	unsigned char i = 0;
+	const char *chr;
+	sprintf(string, txt, args);
+	chr = string;
+	for (i = 0; i < strlen(string); i++)
+	{
+		if (*chr == '\0') { break; }
+		else if (*chr == '\n') { screen_y += glyphs[0].height; screen_x = x_min; chr++; }
+		else
+		{
+			Sprite sp_temp = 
+			{
+				0, 0,
+				0, 0,
+				1.0, 1.0,
+				0, 0,
+				0,
+				0x1234,
+				255, 255, 255, 255,
+				0, 0, NULL,
+				0, 1,
+				sizeof(bmp),
+				NUM_DL(sizeof(bmp)),
+				0, 0,
+				G_IM_FMT_I,
+				G_IM_SIZ_4b,
+				&bmp[0],
+				sp_dl,
+				NULL,
+			};
+
+			u32 cp = utf8_to_cp(&chr);
+			int g = 0;
+			while (glyphs[g].chr != cp) g++;
+
+			init_sprite();
+			sp = &sp_temp;
+			sp->width = glyphs[g].width;
+			sp->height = glyphs[g].height;
+			sp->bitmap = &bmp[g];
+			spColor(sp, 255, 255, 255, 255);
+			spMove(sp, screen_x, screen_y);
+			spScale(sp, 1.0, 1.0);
+			spSetAttribute(sp, SP_TRANSPARENT);
+			draw_sprite(sp);
+			finish_sprite();
+			/*gDPSetTexturePersp(glistp++, G_TP_NONE);
+			gDPSetCycleType(glistp++, G_CYC_COPY);
+			gDPSetRenderMode(glistp++, G_RM_NOOP, G_RM_NOOP2);
+			gSPClearGeometryMode(glistp++, G_SHADE | G_SHADING_SMOOTH);
+			gSPTexture(glistp++, 0x2000, 0x2000, 0, G_TX_RENDERTILE, G_ON);
+			gDPSetCombineMode(glistp++, G_CC_DECALRGB, G_CC_DECALRGB);
+			gDPSetTexturePersp(glistp++, G_TP_NONE);
+			gDPSetTextureFilter(glistp++, G_TF_POINT);
+
+			gDPLoadTextureTile
+			(
+				glistp++,
+				,		// timg - Our sprite array
+				G_IM_FMT_IA,					// fmt - Our image format
+				G_IM_SIZ_8b,					// size - Pixel size
+				w, h,							// width, height of the full image
+				0, 0,							// Top left corner of the rectangle (used for LoadTextureTile only)
+				w, h,							// Bottom right corner (used for LoadTextureTile only)
+				0,								// Pallette to use (always 0)
+				G_TX_NOMIRROR, G_TX_NOMIRROR,	// cms, cmt
+				0, 0,							// masks, maskt
+				G_TX_NOLOD, G_TX_NOLOD			// shifts, shiftt
+			);
+
+			gSPTextureRectangle(glistp++, 
+				screen_x<<2, screen_y<<2, 
+				(screen_x + w)<<2, (screen_y + h)<<2,
+				0, 0, 0,
+				4 << 10, 1 << 10);
+			gDPPipeSync(glistp++);*/
+
+			screen_x += glyphs[g].width;
+			if (screen_x > SCREEN_W - x_min) { screen_y += glyphs[0].height; screen_x = x_min; }
+		}
+	}
+}
+
+void print(const char* txt, ...)
+{
+    va_list args;
+    va_start(args, txt);
+
+	draw_text
+	(
+		terminus_glyphs,
+		72,
+		terminus_img,
+		txt,
+		args
+	);
+
+	va_end(args);
+}

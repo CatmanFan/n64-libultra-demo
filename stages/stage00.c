@@ -2,11 +2,15 @@
 #include <stdarg.h>
 
 #include "config.h"
+
 #include "helpers/types.h"
-#include "helpers/gfx.h"
-#include "helpers/gfx_3d.h"
+#include "helpers/3d.h"
+#include "helpers/audio.h"
 #include "helpers/controller.h"
-#include "helpers/text.h"
+#include "helpers/gfx.h"
+
+#include "helpers/custom/console.h"
+#include "helpers/custom/strings.h"
 
 /* =============== ASSETS =============== */
 
@@ -64,8 +68,18 @@ void stage00_init()
 	obj_type = 0;
 	frame = 0;
 
-	init_controller();
+	load_sounds(PBANK_SFX1_START, PBANK_SFX1_END, WBANK_SFX1_START, SFX1_START, SFX1_END);
+	// The sound effects bank is now the default bank
+
+	load_inst(PBANK_INST1_START, PBANK_INST1_END, WBANK_INST1_START);
+	play_bgm(BGM1_START, BGM1_END);
+	// Now that I played the song, the sound effects bank has been reverted back to default
+	// (which in this case is the sound effects bank). So now I can play a sound without
+	// the need for MusPtrBankSetSingle.
+
 	reset_controller();
+
+	console_clear();
 }
 
 /* ==============================
@@ -74,6 +88,7 @@ void stage00_init()
  * ============================== */
 void stage00_update()
 {
+	frame++;
 	read_controller();
 	
 	if (controller[0].stick_x > 0)
@@ -135,9 +150,9 @@ void stage00_render()
 
 	gDPPipeSync(glistp++);
 
-	// print("Frame: %d", &frame);
+	console_printf(STR_FRAME, frame);
+	console_printf(STR_FRAME, frame);
+	glistp = console_draw_dl(glistp);
 
 	finish_gfx();
-
-	frame++;
 }

@@ -1,8 +1,8 @@
 #ifndef __CONFIG_H__
 #define __CONFIG_H__
 
-	#define SCREEN_W 640
-	#define SCREEN_H 480
+	#define SCREEN_W 320
+	#define SCREEN_H 240
 
 	/* [Stack sizes] */
 	#define STACK_SIZE          0x2000
@@ -17,7 +17,7 @@
 	#define ID_SCHEDULER        7
 	#define ID_AUDIO            8
 	#define ID_CRASH            12
-	
+
 	#define PR_IDLE             10
 	#define PR_MAIN             10
 	#define PR_SCHEDULER        120
@@ -34,17 +34,17 @@
 
 	/* [Stack addresses] */
 	#define START_ADDR          0x80400000
-	
+
 	#define AUDIO_SIZE          0x60000
 	#define AUDIO_ADDR          (CFB1_ADDR-AUDIO_SIZE)
-	
+
 	#define AUDIO_BITRATE       44100
-	
+
 	// Place framebuffers at end of RAM
 	#define CFB_SIZE            SCREEN_W*SCREEN_H*2
 	#define CFB1_ADDR           (START_ADDR-(CFB_SIZE*2))
 	#define CFB2_ADDR           (START_ADDR-(CFB_SIZE))
-	
+
 	#define wait(x) {\
 		osSetTime(0);\
 		while (osGetTime() < x * 1000LL * osClockRate / 1000000ULL) { ; }\

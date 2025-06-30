@@ -1,5 +1,9 @@
 #include "config.h"
 
+// ------------------------------
+
+/* ======= CODESEGMENT ======= */
+
 beginseg
 	name    "code"
 	flags   BOOT OBJECT
@@ -9,7 +13,13 @@ beginseg
 	include "$(ROOT)/usr/lib/PR/rspboot.o"
 	include "$(ROOT)/usr/lib/PR/gspF3DEX2.xbus.o"
 	include "$(ROOT)/usr/lib/PR/gspF3DEX2.fifo.o"
+	include "$(ROOT)/usr/lib/PR/n_aspMain.o"
+	include "$(ROOT)/usr/lib/PR/aspMain.o"
 endseg
+
+// ------------------------------
+
+/* ========= OBJECTS ========= */
 
 /* beginseg
 	name "static"
@@ -31,7 +41,62 @@ endseg */
 	include "assets/textures/font.bin"
 endseg */
 
+// ------------------------------
+
+/* ========== AUDIO ========== */
+
+// Pointer to bank sounds
+beginseg
+	name "pbank_inst1"
+	flags RAW
+	include "assets/audio/banks/xp_remix.ptr"
+endseg
+
+beginseg
+	name "pbank_sfx1"
+	flags RAW
+	include "assets/audio/banks/sfx1.ptr"
+endseg
+
+// Banks containing sound data
+beginseg
+	name "wbank_inst1"
+	flags RAW
+	include "assets/audio/banks/xp_remix.wbk"
+endseg
+
+beginseg
+	name "wbank_sfx1"
+	flags RAW
+	include "assets/audio/banks/sfx1.wbk"
+endseg
+
+// Music score
+beginseg
+	name "bgm1"
+	flags RAW
+	include "assets/audio/music/xp_remix.bin"
+endseg
+
+// Sound effects list
+beginseg
+	name "sfx1"
+	flags RAW
+	include "assets/audio/sfx/sfx1.bfx"
+endseg
+
+// ------------------------------
+
 beginwave
 	name "sample"
 	include "code"
+
+	include "pbank_inst1"
+	include "pbank_sfx1"
+
+	include "wbank_inst1"
+	include "wbank_sfx1"
+
+	include "bgm1"
+	include "sfx1"
 endwave

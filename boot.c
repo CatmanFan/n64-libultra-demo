@@ -3,10 +3,17 @@
 
 #include "debug.h"
 #include "config.h"
+
+#include "stages/stages.h"
+
+#include "helpers/types.h"
+#include "helpers/audio.h"
+#include "helpers/controller.h"
 #include "helpers/gfx.h"
 #include "helpers/reader.h"
-#include "helpers/text.h"
-#include "stages/stages.h"
+
+#include "helpers/custom/console.h"
+#include "helpers/custom/strings.h"
 
 /* ============= PROTOTYPES ============= */
 
@@ -16,10 +23,10 @@ extern void crash(void *);
 
 // Stacks
 u64 boot_stack[STACK_SIZE_BOOT / sizeof(u64)];
-static u64 idle_stack[STACK_SIZE_IDLE / sizeof(u64)];
-static u64 main_stack[STACK_SIZE_MAIN / sizeof(u64)];
-static u64 crash_stack[STACK_SIZE_CRASH / sizeof(u64)];
-static u64 scheduler_stack[OS_SC_STACKSIZE / sizeof(u64)];
+static u64 idle_stack[STACK_SIZE_IDLE / sizeof(u64)] __attribute__((aligned(16)));
+static u64 main_stack[STACK_SIZE_MAIN / sizeof(u64)] __attribute__((aligned(16)));
+static u64 crash_stack[STACK_SIZE_CRASH / sizeof(u64)] __attribute__((aligned(16)));
+static u64 scheduler_stack[OS_SC_STACKSIZE / sizeof(u64)] __attribute__((aligned(16)));
 
 // F3DEX2 matrix stack
 static u64 dram_stack[SP_DRAM_STACK_SIZE8] __attribute__((aligned(16)));
@@ -63,26 +70,26 @@ void init_scheduler()
 {
 	// Initialize video mode
 	u8 video;
-	u8 highres;
+	bool highres;
 
 	#if (SCREEN_W == 640 && SCREEN_H == 480)
-		highres = 1;
+		highres = TRUE;
 	#elif (SCREEN_W == 320 && SCREEN_H == 240)
-		highres = 0;
+		highres = FALSE;
 	#else
 		#error "Invalid screen resolution"
 	#endif
 
 	switch (osTvType) {
 		case 0:
-			video = highres == 1 ? OS_VI_PAL_HAN1 : OS_VI_PAL_LAN1;
+			video = highres ? OS_VI_PAL_HAN1 : OS_VI_PAL_LAN1;
 			break;
 		default:
 		case 1:
-			video = highres == 1 ? OS_VI_NTSC_HAN1 : OS_VI_NTSC_LAN1;
+			video = highres ? OS_VI_NTSC_HAN1 : OS_VI_NTSC_LAN1;
 			break;
 		case 2:
-			video = highres == 1 ? OS_VI_MPAL_HAN1 : OS_VI_MPAL_LAN1;
+			video = highres ? OS_VI_MPAL_HAN1 : OS_VI_MPAL_LAN1;
 			break;
 	}
 
@@ -161,20 +168,36 @@ static void idle(void *arg)
 
 static void main(void *arg)
 {
+	load_all_segments();
+
 	// Initialize scheduler
 	init_scheduler();
-	
-	read_all_segments();
-	
-	// Initialize current stage
-	target_stage = 0;
-	
-	// Go into permanent loop, initialize target stage if it is loaded
 
+	// Initialize audio player
+	init_audio();
+
+	// Initialize controller/SI
+	init_controller();
+
+	// Set default stage
+	target_stage = -1;
+
+	// Go into permanent loop
 	while (1)
 	{
-		switch (target_stage)
+		change_stage:
+		osViBlack(0);
+
+		// Change the current stage to target stage value to cause the loop to wait
+		current_stage = target_stage;
+
+		// Initialize the current stage
+		switch (current_stage)
 		{
+			case -1:
+				menu_init();
+				break;
+
 			case 0:
 				stage00_init();
 				break;
@@ -184,50 +207,61 @@ static void main(void *arg)
 				break;
 		}
 
-		current_stage = target_stage;
-		
-		loop:
-		osRecvMesg(&msgQ_gfx, (OSMesg *)&sched_msg, OS_MESG_BLOCK);
-
-		switch (sched_msg->type)
+		// Update current stage on scheduler message detection
+		while (1)
 		{
-			case OS_SC_PRE_NMI_MSG:
-				target_stage = -1;
-				osViSetYScale(1.0);
-				osSpTaskYield();
+			osRecvMesg(&msgQ_gfx, (OSMesg *)&sched_msg, OS_MESG_BLOCK);
+
+			switch (sched_msg->type)
+			{
+				// Pre-NMI screen
+				case OS_SC_PRE_NMI_MSG:
+					osViSetYScale(1.0);
+					osSpTaskYield();
+					osViBlack(1);
+					osViBlack(0);
+
+					init_gfx();
+					clear_zfb();
+					clear_cfb(0, 0, 0);
+					console_printf(STR_REBOOT);
+					glistp = console_draw_dl(glistp);
+					finish_gfx();
+					osAfterPreNMI();
+					return;
+
+				case OS_SC_DONE_MSG:
+					break;
+
+				case OS_SC_RETRACE_MSG:
+					switch (current_stage)
+					{
+						case -1:
+							menu_update();
+							menu_render();
+							break;
+
+						case 0:
+							stage00_update();
+							stage00_render();
+							break;
+
+						case 1:
+							stage01_update();
+							stage01_render();
+							break;
+						
+						case -2:
+							break;
+					}
+					break;
+			}
+
+			if (target_stage != current_stage)
+			{
 				osViBlack(1);
-				osAfterPreNMI();
-				break;
-				
-			case OS_SC_DONE_MSG:
-				break;
-
-			case OS_SC_RETRACE_MSG:
-				switch (current_stage)
-				{
-					case -1:
-						osViBlack(0);
-						init_gfx();
-						clear_zfb();
-						clear_cfb(0, 0, 0);
-						print("Rebooting...");
-						finish_gfx();
-						break;
-
-					case 0:
-						stage00_update();
-						stage00_render();
-						break;
-
-					case 1:
-						stage01_update();
-						stage01_render();
-						break;
-				}
-				break;
+				goto change_stage;
+			}
 		}
-		
-		if (target_stage == current_stage && target_stage >= 0)
-			goto loop;
 	}
 }

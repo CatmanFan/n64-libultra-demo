@@ -1,15 +1,36 @@
+################################################################
+#                     /!\ Do not touch! /!\                    #
+################################################################
+
+# SDK directories
+ROOT = C:/ultra
+
+# Include SDK PR defs
 include $(ROOT)/usr/include/make/PRdefs
 
-LIB = $(ROOT)/usr/lib
-LPR = $(LIB)/PR
-INC = $(ROOT)/usr/include
+OBJECTS = $(CODESEGMENT)
+# Specifies all relocationable object file names
+# Specifies to the ROM image creation tool
+
+# Specifies the ROM image file name
+APP = $(OUT).out
+# Specifies the symbol file name for debugger
+ROM = $(OUT).n64
+
+################################################################
+#                       Compiler Settings                      #
+################################################################
+
 CC = gcc
 LD = ld
 MAKEROM = mild
 
-.c.o:
-$(CC) -Wall -g -G 0 -c -I. -I$(INC)/PR -I$(INC) -D_LANGUAGE_C
--DF3DEX_GBI_2 -DNOT_SPEC -D_MIPS_SZLONG=32 -D_MIPS_SZINT=32 -D_DEBUG $<
+# Default name of the output ROM/object
+OUT = homebrew
+
+################################################################
+#                          Code Files                          #
+################################################################
 
 # Specify the creation of the object file by using the compiler.
 # Output the object file having the debugger source code information
@@ -18,58 +39,60 @@ $(CC) -Wall -g -G 0 -c -I. -I$(INC)/PR -I$(INC) -D_LANGUAGE_C
 # D_MIPS_SZINT=32 is the required option when you use the N64 OS.
 # -I.-D_DEBUG is the option for simple.
 
-OUT = homebrew
-# Specifies the ROM image file name
-APP = $(OUT).out
-# Specifies the symbol file name for debugger
-TARGETS = $(OUT).n64
-
 # Files to be used by the image
-HFILES = 
-CODEFILES = 
+HFILES = 	$(wildcard *.h) \
+			$(wildcard ./helpers/*.h) \
+			$(wildcard ./assets/fonts/*.h) \
+			$(wildcard ./assets/models/*.h) \
+CODEFILES = $(wildcard *.c) \
+			$(wildcard ./helpers/*.c) \
+			$(wildcard ./stages/*.c) \
+			$(wildcard ./assets/fonts/*.c)
 CODEOBJECTS = $(CODEFILES:.c=.o)
-CODESEGMENT = codesegment.o
+CODESEGMENT = build/codesegment.o
 
 # Specifies the relocationable object file name created
 # as a result of linking the program code
-DATAFILES = \ 
-:
-DATAOBJECTS = $(DATAFILES:.c=.o)
+# DATAFILES = 
+# DATAOBJECTS = $(DATAFILES:.c=.o)
 
-OBJECTS =$(CODESEGMENT) $(DATAOBJECTS)
-# Specifies all relocationable object file names
-# Specifies to the ROM image creation tool
+################################################################
+#                     ROM debug mode check                     #
+################################################################
 
-LDFLAGS = $(MKDEPOPT) -L$(LIB) -L$(LPR) -lgultra_d -L$(GCCDIR)/mipse/lib -lkmc
-# Specifies the option to specify to the linker
-# "MKDEPORT" is a reserved name and required option when you create
-# the relocationable object file by using the linker.
-# "-L$(LIB)-lgultra_d" is the option to link the N64 OS library.
-# "-L$(GCCDIR)/mipse/lib-lkmc" is the required option when you link
-# the object file created by the compiler
+N64LIB = -lgultra_d
+# Set to -lgultra_rom if final
 
-# Default command redirects to $(TARGETS), which in turn creates ROM image file
-default: $(TARGETS)
+OPTIMIZER = -O2
+# Set to -G if final
+
+LCDEFS = -DDEBUG \
+# Set to -D_FINALROM -DNDEBUG if final
+         -DF3DEX_GBI_2 -DNOT_SPEC -D_MIPS_SZLONG=32 -D_MIPS_SZINT=32
+
+################################################################
+#                        Linker Settings                       #
+################################################################
+
+LCINCS  = -Wall -I. -I$(ROOT)/usr/include/PR -I$(ROOT)/usr/include
+LCOPTS  = -G 0
+LASINCS = $(LCINCS)
+LASOPTS = -non_shared -G 0
+LDFLAGS = $(MKDEPOPT) -L$(ROOT)/usr/lib -L$(ROOT)/usr/lib/PR $(N64LIB) \
+          -lgmus -lgultra_d -L$(GCCDIR)/mipse/lib -lkmc
+LDIRT   = $(APP)
+
+################################################################
+#                          Compilation                         #
+################################################################
+
+default: $(ROM)
+ 
 $(CODESEGMENT): $(CODEOBJECTS)
-# Specify the dependent relation among "codesegment.o", the .o file and "Makefile"
-# Provide the following process when ".o" and "Makefile' are updated:
-$(LD) -o $(CODESEGMENT) -r $(CODEOBJECTS) $(LDFLAGS)
-# Specify the creation of the relocationable object file by using the linker.
-# "-o $(CODESEGMENT)" is the option to specify the output
-# file name.
-# "-r" is the option to create the relocationable object file.
-# $(CODEOBJECTS) Specifies the linking object file name
-# $(LDFLAGS) is the specification of passing other options to the linker
+    	$(LD) -o $(CODESEGMENT) -r $(CODEOBJECTS) $(LDFLAGS)
+ 
+$(ROM) :  $(OBJECTS)
+    	$(MAKEROM) spec -r $(ROM) -e $(APP) 
 
-$(TARGETS): $(OBJECTS)
-# Specify the dependent relation between the ROM image file and all ".o" files.
-# Provide the following process if ".o" is updated:
-$(MAKEROM) spec -r $(TARGETS) -e $(APP)
-# Specify the creation of the ROM image file by using
-# the ROM image creation tool.
-# "spec" is the text file to specify the ROM image to the ROM
-# image creation tool. This will be mentioned later.
-# "-r $(TARGETS)" is the option to specify the ROM image
-# file name.
-# "-e $(APP)" is the option to specify the symbol file name.
-makemask $(TARGETS)
+include $(ROOT)/usr/include/make/commonrules
+# This space is needed or makefile errors

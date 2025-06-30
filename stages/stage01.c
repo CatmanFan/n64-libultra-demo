@@ -1,6 +1,7 @@
 #include <ultra64.h>
 
 #include "config.h"
+
 #include "helpers/types.h"
 #include "helpers/gfx.h"
 #include "helpers/controller.h"

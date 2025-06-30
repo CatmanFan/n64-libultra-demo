@@ -4,6 +4,11 @@
 	int current_stage;
 	int target_stage;
 
+	// MENU
+	extern void menu_init();
+	extern void menu_update();
+	extern void menu_render();
+
 	// STAGE 00
 	extern void stage00_init();
 	extern void stage00_update();

@@ -9,6 +9,7 @@ extern void init_gfx();
 extern void finish_gfx();
 extern void clear_zfb();
 extern void clear_cfb(int r, int g, int b);
+extern void swap_cfb(int index);
 
 extern void init_sprite();
 extern void draw_sprite(Sprite *sp);

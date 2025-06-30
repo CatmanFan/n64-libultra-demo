@@ -1,12 +1,13 @@
 #include <ultra64.h>
 #include <assert.h>
-#include <PR/sched.h>
 #include <PR/sp.h>
 
 #include "config.h"
-#include "helpers/types.h"
 
-/* ============= PROTOTYPES ============ */
+#include "helpers/types.h"
+#include "helpers/scheduler.h"
+
+/* ============= PROTOTYPES ============= */
 
 Gfx glist[GL_SIZE];
 Gfx *glistp;
@@ -15,9 +16,6 @@ int cfb_current = 0;
 void *cfb[2] = { (void *)CFB1_ADDR, (void *)CFB2_ADDR };
 u16 zbuffer[SCREEN_W * SCREEN_H];
 
-extern OSSched scheduler;
-extern OSScTask sched_task;
-extern OSScMsg *sched_msg;
 extern OSMesgQueue msgQ_gfx;
 
 extern int vtx_count;
@@ -132,8 +130,15 @@ void finish_gfx()
 	osRecvMesg(&msgQ_gfx, (OSMesg *)&sched_msg, OS_MESG_BLOCK);
 	} while (sched_msg->type != OS_SC_DONE_MSG);
 
-	// Swap framebuffer
+	// Swap framebuffer value (the actual CFB has already been swapped automatically)
 	cfb_current ^= 1;
+}
+
+void swap_cfb(int index)
+{
+	int outOfRange = index < 0 || index >= 2;
+	osViSwapBuffer(outOfRange ? cfb[cfb_current] : cfb[index]);
+	if (outOfRange || index == cfb_current) cfb_current ^= 1;
 }
 
 void clear_zfb()
