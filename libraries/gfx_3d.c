@@ -1,8 +1,9 @@
 #include <ultra64.h>
 
-#include "config.h"
+#include "config/global.h"
 #include "types.h"
-#include "helpers/gfx.h"
+
+#include "libraries/gfx.h"
 
 /* ============= PROTOTYPES ============= */
 
@@ -15,16 +16,23 @@ Mtx viewing;
 
 /* ============= FUNCTIONS ============== */
 
-void init_world(simpleObj cam, int x, int y, int z, float fov)
+void init_camera_2d()
+{
+	guOrtho(&projection, -SCREEN_W / 2.0F, SCREEN_W / 2.0F, -SCREEN_H / 2.0F, SCREEN_H / 2.0F, 1.0F, 10.0F, 1.0F);
+	gSPMatrix(glistp++, OS_K0_TO_PHYSICAL(&projection), G_MTX_PROJECTION | G_MTX_LOAD | G_MTX_NOPUSH);
+}
+
+void init_camera_3d(simpleObj cam, float src_x, float src_y, float src_z, float dest_x, float dest_y, float dest_z, float fov)
 {
 	u16 pnorm;
 
-	vecSet(cam.pos, x, y, z);
-	vecSet(cam.mov, 0, 0, 0);
+	vec3_t src, dest;
+	vecSet(src, src_x, src_y, src_z);
+	vecSet(dest, dest_x, dest_y, dest_z);
+
+	vecSet(cam.pos, src[0], src[1], src[2]);
 
 	guPerspective(&projection, &pnorm, fov, 1.3333333, 50.0, 5000.0, 0.5);
-	gSPPerspNormalize(glistp++, pnorm);
-
 	guLookAt
 	(
 		&viewing,
@@ -35,9 +43,9 @@ void init_world(simpleObj cam, int x, int y, int z, float fov)
 		cam.pos[2],
 		
 		// Destination coordinates
-		cam.mov[0],
-		cam.mov[1],
-		cam.mov[2],
+		dest[0],
+		dest[1],
+		dest[2],
 		
 		// Up-facing coordinates
 		0,
@@ -47,6 +55,8 @@ void init_world(simpleObj cam, int x, int y, int z, float fov)
 
 	gSPMatrix(glistp++, OS_K0_TO_PHYSICAL(&projection), G_MTX_PROJECTION | G_MTX_LOAD | G_MTX_NOPUSH);
 	gSPMatrix(glistp++, OS_K0_TO_PHYSICAL(&viewing), G_MTX_PROJECTION | G_MTX_MUL | G_MTX_NOPUSH);
+
+	gSPPerspNormalize(glistp++, pnorm);
 }
 
 void render_object(Gfx* obj_dl, vec3_t* obj_pos, vec3_t* obj_rot, float size)

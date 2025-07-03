@@ -1,0 +1,6 @@
+*.n64
+*.o
+*.cvt
+*.exe
+
+/build

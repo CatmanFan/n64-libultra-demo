@@ -1,0 +1,155 @@
+#include <ultra64.h>
+
+/* === Configuration === */
+#include "config/global.h"
+
+/* === Default libraries === */
+#include "libraries/types.h"
+// #include "libraries/audio.h"
+// #include "libraries/controller.h"
+// #include "libraries/gfx.h"
+// #include "libraries/gfx_2d.h"
+// #include "libraries/gfx_3d.h"
+// #include "libraries/reader.h"
+// #include "libraries/time.h"
+
+/* === Your custom libraries === */
+
+/* =============== ASSETS =============== */
+
+// Assets for models, textures, etc.
+// #include "assets/.. .h"
+
+/* ============== SEGMENTS ============== */
+
+// Your ROM segments go here.
+// Primarily used for music, SFX
+// ROM_SEGMENT(...)
+
+/* ========== STATIC VARIABLES ========== */
+
+/* ============= 2D OBJECTS ============= */
+
+/* ============= 3D OBJECTS ============= */
+
+static simpleObj cam;
+
+static simpleObj myObject =
+{
+	.dl = // your Model display list here
+};
+
+static Lights7 light = gdSPDefLights7
+(
+	0, 0, 0,		// Ambient light
+
+	255, 255, 255,	// Diffuse light #1
+	0, 0, 80,		// Direction toward diffuse light #1
+
+	0, 100, 255,	// Diffuse light #2
+	0, 0, -79,		// Direction toward diffuse light #2
+
+	0, 0, 0,		// Diffuse light #3
+	0, 0, 0,		// Direction toward diffuse light #3
+
+	0, 0, 0,		// Diffuse light #4
+	0, 0, 0,		// Direction toward diffuse light #4
+
+	0, 0, 0,		// Diffuse light #5
+	0, 0, 0,		// Direction toward diffuse light #5
+
+	0, 0, 0,		// Diffuse light #6
+	0, 0, 0,		// Direction toward diffuse light #6
+
+	0, 0, 0,		// Diffuse light #7
+	0, 0, 0			// Direction toward diffuse light #7
+);
+
+
+/* ========== STATIC FUNCTIONS ========== */
+
+/* ========== GLOBAL FUNCTIONS ========== */
+
+/* ==============================
+ * Initializes stage.
+ * ============================== */
+void REPLACE_ME_init()
+{
+	reset_controller();
+
+	vecSet(cam.pos, 0, 0, 500);
+
+	load_sounds
+	(
+		ROM_START(pbank_sfx1),
+		ROM_END(pbank_sfx1),
+		ROM_START(wbank_sfx1),
+		ROM_START(sfx1),
+		ROM_END(sfx1)
+	);
+	// The sound effects bank is now the default bank
+
+	load_inst
+	(
+		ROM_START(pbank_inst1),
+		ROM_END(pbank_inst1),
+		ROM_START(wbank_inst1)
+	);
+	play_bgm
+	(
+		ROM_START(bgm1),
+		ROM_END(bgm1)
+	);
+	// Now that I played the song, the sound effects bank has been reverted back to default
+	// (which in this case is the sound effects bank). So now I can play a sound without
+	// the need for MusPtrBankSetSingle.
+}
+
+/* ==============================
+ * Updates variables based on
+ * controller input, time, etc.
+ * ============================== */
+void REPLACE_ME_update()
+{
+	read_controller();
+	// Controller buttons functions
+
+	// ==================================================
+
+	// Anything goes!
+}
+
+/* ==============================
+ * Renders frame.
+ * ============================== */
+void REPLACE_ME_render()
+{
+	init_gfx();
+	clear_zfb();
+	clear_cfb(0, 0, 0);
+
+	// ==========================
+	// 3D rendering
+	// ==========================
+	init_camera_3d
+	(
+		camera,
+		camera.pos[0], camera.pos[1], camera.pos[2],
+		0, 0, 0,
+		200
+	);
+	gSPSetGeometryMode(glistp++, G_LIGHTING);
+	gSPSetLights7(glistp++, light);
+
+	render_object(myObj.dl, &myObj.pos, &myObj.rot, 1);
+	gDPPipeSync(glistp++);
+
+	// ==========================
+	// 2D rendering
+	// ==========================
+
+	// ==========================
+	// Finish
+	// ==========================
+	finish_gfx();
+}

@@ -3,10 +3,10 @@
 #include <stdarg.h>
 #include <stdlib.h>
 
-#include "config.h"
+#include "config/global.h"
 
-#include "helpers/types.h"
-#include "helpers/gfx.h"
+#include "libraries/types.h"
+#include "libraries/gfx.h"
 
 /* =============== ASSETS =============== */
 

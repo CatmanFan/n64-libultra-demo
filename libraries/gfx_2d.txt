@@ -1,0 +1,63 @@
+extern void init_sprite();
+extern void finish_sprite();
+extern void draw_sprite(Sprite *sp, vec2 *pos, vec2 *size, u8 r, u8 g, u8 b, u8 a);
+
+extern Gfx sprDl[NUM_DL(52)];
+extern Sprite sprBlank;
+
+#include <ultra64.h>
+#include <PR/sp.h>
+
+Gfx sprDl[NUM_DL(52)];
+Sprite sprBlank =
+{
+	0, 0,				// Position
+	0, 0,				// Size in texels
+	1, 1,				// Scale relative to sprite size
+	0, 0,				// Explosion
+	3,					// Attribute
+	0,					// Sprite Z-depth
+	255, 255, 255, 255,	// Color
+	0, 0, NULL,			// Color lookup table: start, length, address
+	0, 1,				// Bitmap index: start, increment
+	1,					// Bitmap amount
+	1,					// DLs
+	0, 0,				// Used/physical bitmap height,
+	G_IM_FMT_RGBA,		// Bitmap format
+	G_IM_SIZ_32b,		// Bitmap pixel size
+	NULL,				// Bitmap buffer
+	sprDl,				// rsp_dl: memory
+	NULL,				// rsp_next_dl: pointer
+	0, 0				// Texture fractional offsets
+};
+
+Gfx *init_sprite(Gfx **dl)
+{
+	return spInit(&dl);
+}
+
+Gfx *finish_sprite(Gfx **dl)
+{
+	spFinish(&dl);
+	dl--; // Removes gSPEndDisplayList()
+	return dl;
+}
+
+Bitmap *create_bitmap(u32 img, 
+
+Sprite *create_sprite(Bitmap bmp
+
+void draw_sprite(Sprite *sp, vec2 *pos, vec2 *size, u8 r, u8 g, u8 b, u8 a)
+{
+	Gfx *spDl;
+	
+	sp->rsp_dl_next = sp->rsp_dl;
+	
+	spMove(sp, (int)(pos->x), (int)(pos->y));
+	spScale(sp, size->x, size->y);
+	spColor(sp, r, g, b, a);
+	
+	spDl = spDraw(sp);
+	
+	gSPDisplayList(glistp++, spDl);
+}

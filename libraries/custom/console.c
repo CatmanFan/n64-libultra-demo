@@ -1,10 +1,9 @@
 #include <ultra64.h>
 #include <stdarg.h>
 
-#include "config.h"
-#include "strings.h"
+#include "config/global.h"
 
-#include "helpers/types.h"
+#include "libraries/types.h"
 
 /* =============== ASSETS =============== */
 
@@ -13,6 +12,7 @@
 
 /* ============= PROTOTYPES ============= */
 
+extern int language;
 extern void *cfb[];
 extern int cfb_current;
 
@@ -60,6 +60,8 @@ u32 utf8_to_cp(const char **str)
 	return 0xFFFD;
 }
 
+static char buf[0x108];
+
 extern int _Printf(void *(*copyfunc)(void *, const char *, size_t), void*, const char*, va_list);
 
 /*==============================
@@ -75,21 +77,22 @@ static void* printf_handler(void *buf, const char *str, size_t len)
 	return ((char *) memcpy(buf, str, len) + len);
 }
 
-static char buf[0x108];
-
 void console_clear()
 {
 	bzero(&buf, sizeof(buf));
 }
 
-void console_printf(const char *txt, ...)
+void console_puts(const char *txt, ...)
 {
 	va_list args;
 	va_start(args, txt);
 
-	_Printf(&printf_handler, buf, txt, args);
+	_Printf(&printf_handler, buf + strlen(buf), txt, args);
 
 	va_end(args);
+
+	buf[strlen(buf)] = '\n';
+	buf[strlen(buf) + 1] = '\0';
 }
 
 /* =========== DRAWING (RAW) ============ */
@@ -180,12 +183,12 @@ void console_draw_raw()
 {
 	draw_text_raw
 	(
-		language == 7 ? 1 : 2,
+		language == 6 ? 1 : 2,
 		1,
 		buf,
-		language == 7 ? rm2003_ja_glyphs : terminus_glyphs,
-		language == 7 ? 12 * 12 : 6 * 12,
-		language == 7 ? rm2003_ja_img : terminus_img
+		language == 6 ? rm2003_ja_glyphs : terminus_glyphs,
+		language == 6 ? 12 * 12 : 6 * 12,
+		language == 6 ? rm2003_ja_img : terminus_img
 	);
 
     osWritebackDCacheAll();
@@ -283,15 +286,16 @@ static Gfx *draw_text_dl(Gfx *dl, int x, int y, int scale, const char *txt, Glyp
 
 Gfx *console_draw_dl(Gfx *dl)
 {
+	int font = language == 6 ? 1 : 0;
 	return draw_text_dl
 	(
 		dl,
-		language == 7 ? 1 : 2,
+		font == 1 ? 1 : 2,
 		1,
 		1,
 		buf,
-		language == 7 ? rm2003_ja_glyphs : terminus_glyphs,
-		language == 7 ? 12 * 12 : 6 * 12,
-		language == 7 ? rm2003_ja_img : terminus_img
+		font == 1 ? rm2003_ja_glyphs : terminus_glyphs,
+		font == 1 ? 12 * 12 : 6 * 12,
+		font == 1 ? rm2003_ja_img : terminus_img
 	);
 }

@@ -4,7 +4,7 @@
 // Type = 8-Bit IA (G_IM_FMT_IA | G_IM_SIZ_8b)
 
 #include <ultra64.h>
-#include "helpers/types.h"
+#include "libraries/types.h"
 
 Glyph rm2003_ja_glyphs[] =
 {

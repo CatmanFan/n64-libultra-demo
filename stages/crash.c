@@ -4,11 +4,18 @@
 #include <stdarg.h>
 #include <string.h>
 
-#include "config.h"
-#include "helpers/types.h"
+/* === Configuration === */
+#include "config/global.h"
 
-#include "helpers/custom/console.h"
-#include "helpers/custom/strings.h"
+/* === Default libraries === */
+#include "libraries/types.h"
+#include "libraries/gfx.h"
+
+/* === Custom libraries === */
+#include "libraries/custom/console.h"
+#include "libraries/custom/strings.h"
+
+/* ============= PROTOTYPES ============= */
 
 extern OSMesgQueue msgQ_crash;
 
@@ -16,7 +23,9 @@ static bool update_fb = FALSE;
 OSThread *thread;
 __OSThreadContext *tc;
 
-const char *const gCauseDesc[18] = {
+/* ========== STATIC VARIABLES ========== */
+
+static const char *const gCauseDesc[18] = {
     "Interrupt",
     "TLB modification",
     "TLB exception on load",
@@ -37,41 +46,49 @@ const char *const gCauseDesc[18] = {
     "Virtual coherency on data",
 };
 
-void init_crash()
+/* ========== STATIC FUNCTIONS ========== */
+
+static void init_crash()
 {
-	osViSetYScale(1.0);
+	my_osViBlack(TRUE);
 	// osViSetSpecialFeatures(OS_VI_GAMMA_OFF);
 	update_fb = TRUE;
 	tc = &thread->context;
 
-	for (;;)
+	if (update_fb)
 	{
-		if (update_fb)
-		{
-			s16 cause = (tc->cause >> 2) & 0x1f;
-			if (cause == 23) // EXC_WATCH
-				cause = 16;
-			if (cause == 31) // EXC_VCED
-				cause = 17;
+		s16 cause = (tc->cause >> 2) & 0x1f;
+		if (cause == 23) // EXC_WATCH
+			cause = 16;
+		if (cause == 31) // EXC_VCED
+			cause = 17;
 
-			osViBlack(0);
+		my_osViBlack(FALSE);
 
-			console_clear();
-			console_printf
-			(
-				STR_ERROR,
-				(int)thread->id,
-				(int)thread->priority,
-				gCauseDesc[cause],
-				(int)tc->pc,
-				(int)tc->badvaddr
-			);
-			console_draw_raw();
+		console_clear();
+		console_puts
+		(
+			str_error,
+			(int)thread->id,
+			(int)thread->priority,
+			gCauseDesc[cause]
+		);
+		console_puts("a0       0x%x", (int)tc->a0);
+		console_puts("a1       0x%x", (int)tc->a1);
+		console_puts("a2       0x%x", (int)tc->a2);
+		console_puts("a3       0x%x", (int)tc->a3);
+		console_puts("pc       0x%x", (int)tc->pc);
+		console_puts("badvaddr 0x%x", (int)tc->badvaddr);
+		console_draw_raw();
 
-			update_fb = FALSE;
-		}
+		update_fb = FALSE;
 	}
+
+	// Halt everything
+	// for (;;) { ; }
 }
+
+/* ========== GLOBAL FUNCTIONS ========== */
 
 void crash(void *arg)
 {
@@ -79,7 +96,7 @@ void crash(void *arg)
 
     osSetEventMesg(OS_EVENT_CPU_BREAK, &msgQ_crash, (OSMesg)1);
     osSetEventMesg(OS_EVENT_FAULT, &msgQ_crash, (OSMesg)2);
-	
+
     thread = (OSThread *)NULL;
 	while (1)
 	{
