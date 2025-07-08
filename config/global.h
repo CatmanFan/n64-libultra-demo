@@ -2,17 +2,6 @@
 #define __CONFIG_H__
 
 /**
- * Screen resolution dimensions.
- */
-#ifdef VIDEO_HIGHRES
-	#define SCREEN_W		640
-	#define SCREEN_H		480
-#else
-	#define SCREEN_W		320
-	#define SCREEN_H		240
-#endif
-
-/**
  * Configure stack sizes.
  *
  * Stack sizes cannot be smaller than OS_MIN_STACKSIZE, except for RDP/FIFO,
@@ -28,12 +17,15 @@
 
 /**
  * Configure thread IDs.
+ *
+ * It is HIGHLY recommended to not conflict any of the IDs with those used by the
+ * USB+Debug Library (13, 14, 15) or with those used by the target decomp!
  */
 #define ID_IDLE             5
 #define ID_MAIN             6
 #define ID_SCHEDULER        7
 #define ID_AUDIO            8
-#define ID_CRASH            12
+#define ID_CRASH            11
 
 /**
  * Configure thread priority values.
@@ -69,5 +61,10 @@
 #define START_ADDR          0x80400000
 // [Audio stack addresses]
 #define AUDIO_ADDR          (CFB1_ADDR-STACK_SIZE_AUDIO)
+
+/**
+ * Emulator check.
+ */
+#define IS_RUNNING_ON_EMULATOR (IO_READ(DPC_PIPEBUSY_REG) == 0)
 
 #endif

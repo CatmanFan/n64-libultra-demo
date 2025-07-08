@@ -1,5 +1,4 @@
 #include <ultra64.h>
-#include <PR/os.h>
 #include <PR/sched.h>
 
 /* === Configuration === */
@@ -266,7 +265,7 @@ static void main(void *arg)
 
 					console_clear();
 					console_puts(str_00);
-					glistp = console_draw_dl(glistp);
+					console_draw_dl();
 
 					finish_gfx();
 					osAfterPreNMI();
