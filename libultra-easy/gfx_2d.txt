@@ -1,0 +1,286 @@
+#ifndef __GFX_2D_H__
+#define __GFX_2D_H__
+
+extern void sprite_init();
+extern void sprite_finish();
+
+extern SpriteData sprite_create(void *img, void *pal, int w_full, int h_full, int w_tile, int h_tile, u8 fmt, u8 siz);
+extern void sprite_draw(SpriteData *spr);
+
+#endif
+
+
+--------------------------------------------------------------------
+
+
+#include <PR/gs2dex.h>
+
+struct sprite_data {
+	void *img;
+	void *pal;
+	u32 w;
+	u32 h;
+	u32 tiles_x;
+	u32 tiles_y;
+	u32 tile_w;
+	u32 tile_h;
+	uObjSprite *obj;
+	uObjMtx *mtx;
+
+	int x;
+	int y;
+
+	int r;
+	int g;
+	int b;
+	int a;
+} typedef SpriteData;
+
+
+--------------------------------------------------------------------
+
+
+#include <ultra64.h>
+#include <stdlib.h>
+#include <PR/gs2dex.h>
+#include <PR/gu.h>
+
+#include "config/global.h"
+#include "config/video.h"
+#include "config/usb.h"
+
+#include "lib/types.h"
+#include "lib/fs.h"
+#include "lib/gfx.h"
+
+static Gfx dl_sprite_init[] =
+{
+	gsDPPipeSync(),
+	gsDPSetTexturePersp(G_TP_NONE),
+	gsDPSetTextureLOD(G_TL_TILE),
+	gsDPSetTextureLUT(G_TT_NONE),
+	gsDPSetTextureConvert(G_TC_FILT),
+	gsDPSetAlphaCompare(G_AC_THRESHOLD),
+	gsDPSetBlendColor(0, 0, 0, 0x01),
+	gsDPSetCombineMode(G_CC_DECALRGBA, G_CC_DECALRGBA),
+	gsSPEndDisplayList(),
+};
+
+/* ============= FUNCTIONS ============== */
+
+void sprite_init()
+{
+	gSPLoadUcodeL(glistp++, gspS2DEX2_fifo);
+	gSPDisplayList(glistp++, dl_sprite_init);
+}
+
+void sprite_finish()
+{
+	gSPLoadUcodeL(glistp++, gspF3DEX2_fifo);
+
+	// Execute RSP and RDP initialization
+	gfx_init_rdp();
+	gfx_init_rsp();
+}
+
+void sprite_draw_bg(uObjBg *bg, int x, int y, float scale_x, float scale_y, u8 r, u8 g, u8 b, u8 a)
+{
+	gSPBgRect1Cyc(glistp++, &bg);
+}
+
+uObjSprite obj_blank =
+{{
+	0<<2, 1<<10, 0<<5, 0,          /* objX, scaleX, imageW, unused */
+	0<<2, 1<<10, 0<<5, 0,          /* objY, scaleY, imageH, unused */
+	0, /* imageStride */
+	0, /* imageAdrs */
+	G_IM_FMT_RGBA, /* imageFmt */
+	G_IM_SIZ_16b, /* imageSiz */
+	0, /* imagePal */
+	0, /* imageFlags */
+}};
+
+uObjMtx mtx_blank =
+{{
+	0x10000,  0,              /* A,B */
+	0,        0x10000,        /* C,D */
+	50,        50,            /* X,Y */
+	1<<10,    1<<10           /* BaseScaleX, BaseScaleY */
+}};
+
+static int find_nearest_multiple(int input)
+{
+	int multiple_array[] = { 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 48, 64, 72, 76, 100, 108, 128, 144, 152, 164, 200, 216, 228, 256, 304, 328, 432, 456, 512, 684, 820, 912 };
+	int multiple_i;
+
+	while (multiple_array[multiple_i] < input && multiple_i < 31)
+		multiple_i++;
+
+	return multiple_array[multiple_i];
+}
+
+static void copy_img(void *img, int img_w, void *dest, int dest_w, int w, int h)
+{
+	int dest_x, dest_y;
+    bzero(dest, sizeof(dest));
+
+	for (dest_y = 0; dest_y < h; dest_y++)
+	{
+		// memcpy(dest + (dest_y * dest_w), img + (dest_y * img_w), w);
+	    int *ptr = dest + (dest_w * dest_y);
+		for (dest_x = 0; dest_x < w; dest_x++)
+		{
+		    ptr = img + (dest_y * img_w) + dest_x;
+		    ptr++;
+		}
+	}
+}
+
+SpriteData sprite_create(void *img, void *pal, int w_full, int h_full, int w_tile, int h_tile, u8 fmt, u8 siz)
+{
+	int w_fix = find_nearest_multiple(w_full), h_fix = find_nearest_multiple(h_full);
+
+	// Declare sprite variables
+	uObjMtx *mtx = &mtx_blank;
+	uObjSprite *obj = &obj_blank;
+	SpriteData spr;
+
+	// Declare buffer to copy image with variable pixel size
+	#define IS_32BIT ((siz == G_IM_SIZ_32b) ? 1 : 0)
+	#define IS_16BIT ((siz == G_IM_SIZ_16b) ? 1 : 0)
+	#if IS_32BIT == 1
+		u32 buf[w_fix * h_fix];
+	#elif IS_16BIT == 1
+		u16 buf[w_fix * h_fix];
+	#else
+		u8 buf[w_fix * h_fix];
+	#endif
+	#undef IS_32BIT
+	#undef IS_16BIT
+
+	// Fill in empty values needed by uObjSprite
+	obj->s.imageFmt = fmt;
+	obj->s.imageSiz = siz;
+	obj->s.imageW = w_fix << 5;
+	obj->s.imageH = h_fix << 5;
+	obj->s.imageStride = GS_PIX2TMEM(w_fix, siz);
+	obj->s.imageAdrs = GS_PIX2TMEM(0, siz);
+
+	// Link internal values to declared
+	spr.pal = pal;
+	spr.mtx = mtx;
+	spr.obj = obj;
+
+	// Set full image and tile sizes
+	spr.w = w_fix;
+	spr.h = h_fix;
+	spr.tile_w = find_nearest_multiple(w_tile);
+	spr.tile_h = find_nearest_multiple(h_tile);
+
+	// Set other parameters
+	spr.tiles_x = spr.w / spr.tile_w;
+	spr.tiles_y = spr.h / spr.tile_h;
+	spr.x = 0;
+	spr.y = 0;
+
+	spr.r = 255;
+	spr.g = 255;
+	spr.b = 255;
+	spr.a = 255;
+
+	// Copy image to buffer
+	copy_img(img, w_full, buf, w_fix, w_full, h_full);
+	spr.img = buf;
+
+	return spr;
+}
+
+void sprite_draw(SpriteData *spr)
+{
+	int tile_x, tile_y;
+
+	// Set up DL
+	gDPPipeSync(glistp++);
+	gDPSetCycleType(glistp++, G_CYC_1CYCLE);
+	gDPSetCombineMode(glistp++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
+	gDPSetRenderMode(glistp++, G_RM_XLU_SURF, G_RM_XLU_SURF);
+
+	// ******************************************
+
+	// Init palette
+	// gDPSetPrimColor(glistp++, 0, 0, spr->r, spr->g, spr->b, spr->a);
+	if (spr->pal != 0 && spr->pal != NULL)
+	{
+		if (spr->obj->s.imageFmt == G_IM_FMT_CI && spr->obj->s.imageSiz == G_IM_SIZ_4b)
+			gDPLoadTLUT_pal16(glistp++, 0, spr->pal);
+		if (spr->obj->s.imageFmt == G_IM_FMT_CI && spr->obj->s.imageSiz == G_IM_SIZ_8b)
+			gDPLoadTLUT_pal256(glistp++, spr->pal);
+	}
+
+	// ******************************************
+
+	// Translate X/Y
+	spr->mtx->m.X = spr->x << 2;
+	spr->mtx->m.Y = spr->y << 2;
+
+	// Translate scale
+	spr->mtx->m.A *= 1;
+	spr->mtx->m.D *= 1;
+
+	spr->mtx->m.BaseScaleX *= 1;
+	spr->mtx->m.BaseScaleY *= 1;
+
+	// Translate rotation
+	/* spr->mtx->m.A = FTOFIX32(cosf(90));
+	spr->mtx->m.B = FTOFIX32(sinf(90));
+	spr->mtx->m.C = FTOFIX32(-sinf(90));
+	spr->mtx->m.D = FTOFIX32(cosf(90)); */
+
+	// Write matrix to DL
+	osWritebackDCache(spr->mtx, sizeof(uObjMtx));
+	gSPObjMatrix(glistp++, spr->mtx);
+
+	for (tile_y = 0; tile_y < spr->tiles_y; tile_y++)
+	{
+		for (tile_x = 0; tile_x < spr->tiles_x; tile_x++)
+		{
+			spr->obj->s.objX = tile_x * spr->tiles_x;
+			spr->obj->s.objY = tile_y * spr->tiles_y;
+
+			gDPLoadMultiTile
+			(
+				glistp++,
+				spr->img, // timg - Our sprite array
+				0, // tmem - Address to store in TMEM
+				G_TX_RENDERTILE,
+
+				spr->obj->s.imageFmt == G_IM_FMT_I ? G_IM_FMT_I : 
+				spr->obj->s.imageFmt == G_IM_FMT_IA ? G_IM_FMT_IA :
+				spr->obj->s.imageFmt == G_IM_FMT_YUV ? G_IM_FMT_YUV : 
+				spr->obj->s.imageFmt == G_IM_FMT_CI ? G_IM_FMT_CI : G_IM_FMT_RGBA,   
+				// fmt - Our image format
+
+				spr->obj->s.imageSiz == G_IM_SIZ_4b ? G_IM_SIZ_4b : 
+				spr->obj->s.imageSiz == G_IM_SIZ_8b ? G_IM_SIZ_8b : 
+				spr->obj->s.imageSiz == G_IM_SIZ_32b ? G_IM_SIZ_32b : G_IM_SIZ_16b,
+				// size - Pixel size
+
+				spr->w,
+				spr->h,
+				spr->obj->s.objX,
+				spr->obj->s.objY,
+				spr->obj->s.objX + spr->tile_w - 1,
+				spr->obj->s.objY + spr->tile_h - 1,
+
+				0,
+				G_TX_WRAP, G_TX_WRAP,     // cms, cmt
+				G_TX_NOMASK, G_TX_NOMASK, // masks, maskt
+				G_TX_NOLOD, G_TX_NOLOD    // shifts, shiftt
+			);
+
+			osWritebackDCache(spr->obj, sizeof(uObjSprite));
+			gSPObjSprite(glistp++, spr->obj);
+			gDPPipeSync(glistp++);
+		}
+	}
+}

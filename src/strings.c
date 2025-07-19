@@ -18,7 +18,7 @@ void change_language()
 	if (language < 0) language = 6;
 	if (language > 6) language = 0;
 
-	str_error = "";
+	str_error = "THREAD %d (PR%d)\n%s";
 	str_00 = "";
 	str_01 = "";
 	str_02 = "";
@@ -30,11 +30,9 @@ void change_language()
 	switch (language)
 	{
 		// ENGLISH
+		default:
 		case 0:
-			str_error = "Fatal error at thread %d (priority %d).\n" \
-						"Software terminated.\n\n" \
-						"Error code\n%s\n\n" \
-						"Parameters (Page %d: L/R)";
+			str_error = "Fatal error, the software has been terminated.\nThread %d (priority: %d)";
 			str_00 = "Restarting...";
 
 			str_01 = "Language: English\nSelect a stage: %d";
@@ -49,10 +47,7 @@ void change_language()
 
 		// FRENCH
 		case 1:
-			str_error = "Erreur grave au thread n° %d (priorité fixée à %d).\n" \
-						"Le logiciel a été arrêté.\n\n" \
-						"Code de l'erreur\n%s\n\n" \
-						"Paramètres (Page %d : L / R)";
+			str_error = "Le logiciel a été arrêté des suites d'une erreur grave.\nProcessus léger : %d (priorité : %d)";
 			str_00 = "Redémarrage en cours ...";
 
 			str_01 = "Langue : français\nChoisir un niveau : %d";
@@ -67,10 +62,7 @@ void change_language()
 
 		// SPANISH
 		case 2:
-			str_error = "Error grave en el subproceso n° %d (prioridad fijada a %d).\n" \
-						"Se ha cerrado el programa.\n\n" \
-						"Código del error\n%s\n\n" \
-						"Parametros (%d °a página: L/R)";
+			str_error = "Se ha cerrado el programa debido a un error grave.\nSubproceso n° %d (prioridad: %d)";
 			str_00 = "Se reiniciará el programa.";
 
 			str_01 = "Idioma: español\nElige un nivel: %d";
@@ -85,10 +77,7 @@ void change_language()
 
 		// GERMAN
 		case 3:
-			str_error = "Schwerwiegender Fehler im Thread %d mit der Priorität %d.\n" \
-						"Die Software wurde beendet.\n\n" \
-						"Fehlercode\n%s\n\n" \
-						"Parameter (Seite %d: L/R)";
+			str_error = "Die Software wurde beendet, weil ein schwerwiegender Fehler aufgetreten ist.\nThread %d / Priorität %d";
 			str_00 = "Die Software wird neu gestartet.";
 
 			str_01 = "Spracheinstellung: Deutsch\nLevel auswählen: %d";
@@ -103,11 +92,8 @@ void change_language()
 
 		// TURKISH
 		case 4:
-			str_error = "%d. iş parçacığında (önceliği: %d) bir kritik hata oluştu.\n" \
-						"Yazılım kapatıldı.\n\n" \
-						"Hata Kodu\n%s\n\n" \
-						"Parametreler (%d. Sayfa: L/R)";
-			str_00 = "Yazılım yeniden başlamıyor...";
+			str_error = "Bir kritik hata nedeniyle yazılım kapatıldı.\n%d. Iş Parçacığında (Önceliği: %d)";
+			str_00 = "Yazılım yeniden başlamaktadır.";
 
 			str_01 = "Dil: Türkçe\nBir bölge seçin: %d";
 
@@ -121,10 +107,7 @@ void change_language()
 
 		// TACHELHIT
 		case 5:
-			str_error = "Tazgelt icqqan ɣ tɣrist %d (tizwiri: %d).\n" \
-						"Isala uṣnfaṛ.\n\n" \
-						"Uṭṭun n tzgelt\n%s\n\n" \
-						"Tifawin (tasna tis-%d: L/R)";
+			str_error = "Tazgelt icqqan, isala uṣnfaṛ.\nTizigzt tis-%d (tizwiri: %d)";
 			str_00 = "Rad isker daɣ uṣnfaṛ.";
 
 			str_01 = "Tutlayt: Taclḥiyt\nSti aswir: %d";
@@ -139,10 +122,7 @@ void change_language()
 
 		// JAPANESE
 		case 6:
-			str_error = "スレッド%d(優先度%d)には大変なエラーが発生。\" /* " */ \
-						"\nソフトが終了しました。\\n\n" \
-						"エラーコード\\n%s\n\n" \
-						"くわしく (ページ%d:L/R)";
+			str_error = "大変なエラーが発生したので、ソフトが終了しました。\\nスレッド%d(優先度%d)";
 			str_00 = "再起動しています。\\n";
 
 			str_01 = "言語:日本語\\nステージを選んでください:%d";

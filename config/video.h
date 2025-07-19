@@ -9,7 +9,7 @@
  * OS_TV_PAL:  Force PAL mode  (Europe/Australia)
  * OS_TV_MPAL: Force MPAL mode (Brazil)
  */
-#define VIDEO_TYPE			OS_TV_NTSC
+#define VIDEO_TYPE osTvType
 
 /**
  * Enables full-resolution PAL mode (320x288 / 640x576).
@@ -17,24 +17,35 @@
 #define VIDEO_FPAL
 
 /**
- * Enables 32-bit screen depth (instead of 16-bit).
+ * Permanently sets the screen depth to 32-bit (instead of 16-bit).
+ * WARNING: Enabling this breaks dynamic screen resolution!
  */
 // #define VIDEO_32BIT
 
 /**
- * Renders in high-resolution mode.
+ * Sets the default resolution to high-res dimensions.
  */
-#define VIDEO_HIGHRES
+// #define VIDEO_HIGHRES
 
 /**
  * Screen resolution dimensions.
  */
-#ifdef VIDEO_HIGHRES
-	#define SCREEN_W		640
-	#define SCREEN_H		480
-#else
-	#define SCREEN_W		320
-	#define SCREEN_H		240
-#endif
+// [High-resolution]
+#define SCREEN_W_HD 640
+#define SCREEN_H_HD 480
+// [Standard]
+#define SCREEN_W_SD 320
+#define SCREEN_H_SD 240
+
+/**
+ * Configure color framebuffer count and size.
+ */
+#define CFB_COUNT 2
+#define CFB_SIZE  SCREEN_W_HD*SCREEN_H_HD*2
+
+/**
+ * Define the size of dynamic display lists.
+ */
+#define GDL_SIZE 0x1000
 
 #endif

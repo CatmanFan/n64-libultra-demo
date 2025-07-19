@@ -1,4 +1,6 @@
 #include <ultra64.h>
+#include "libultra-easy/types.h"
+#include "libultra-easy/crash.h"
 
 /* Available OR values for "button":
    - START_BUTTON
@@ -36,10 +38,18 @@ static OSMesgQueue msgQ_si;
 
 // This will hold the data read from the controllers at runtime
 OSContPad controller[MAXCONTROLLERS];
+static bool joypad_has_data = FALSE;
 
 static OSContStatus controller_status[MAXCONTROLLERS];
 
 /* ============= FUNCTIONS ============== */
+
+bool joypad_is_pressed(Button button, int cont)
+{
+	if (!joypad_has_data)
+		crash_msg("Controller not read");
+	return controller[cont].button == button;
+}
 
 void init_controller()
 {
@@ -58,9 +68,11 @@ void read_controller()
 	osContStartReadData(&msgQ_si);
 	osRecvMesg(&msgQ_si, NULL, OS_MESG_BLOCK); // Wait for controller data
 	osContGetReadData(controller);
+	joypad_has_data = TRUE;
 }
 
 void reset_controller()
 {
 	osContReset(&msgQ_si, controller_status);
+	joypad_has_data = FALSE;
 }
