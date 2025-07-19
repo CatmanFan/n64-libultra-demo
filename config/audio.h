@@ -2,6 +2,11 @@
 #define __CONFIG_AUDIO_H__
 
 /**
+ * Enables audio playback.
+ */
+// #define ENABLE_AUDIO
+
+/**
  * Configure audio bitrate.
  */
 #define AUDIO_BITRATE		44100

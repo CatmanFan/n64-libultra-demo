@@ -5,7 +5,10 @@
 
 /* ============= FUNCTIONS ============== */
 
-extern void init_audio();
+/**
+ * @brief Initializes the audio subsystem.
+ */
+void init_audio();
 
 extern void load_inst(char* pbank_start, char* pbank_end, char* wbank_start);
 extern void play_bgm(char* title_start, char* title_end);

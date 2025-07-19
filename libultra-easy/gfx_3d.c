@@ -2,8 +2,10 @@
 
 #include "config/video.h"
 
-#include "lib/types.h"
-#include "lib/gfx.h"
+#include "libultra-easy/types.h"
+#include "libultra-easy/gfx_3d.h"
+#include "libultra-easy/display.h"
+#include "libultra-easy/rcp.h"
 
 /* ============= PROTOTYPES ============= */
 
@@ -18,34 +20,28 @@ Mtx viewing;
 
 void init_camera_2d()
 {
-	guOrtho(&projection, -SCREEN_W / 2.0F, SCREEN_W / 2.0F, -SCREEN_H / 2.0F, SCREEN_H / 2.0F, 1.0F, 10.0F, 1.0F);
+	guOrtho(&projection, -(float)display_width() / 2.0F, (float)display_width() / 2.0F, -(float)display_height() / 2.0F, (float)display_height() / 2.0F, 1.0F, 10.0F, 1.0F);
 	gSPMatrix(glistp++, OS_K0_TO_PHYSICAL(&projection), G_MTX_PROJECTION | G_MTX_LOAD | G_MTX_NOPUSH);
 }
 
-void init_camera_3d(simpleObj cam, float src_x, float src_y, float src_z, float dest_x, float dest_y, float dest_z, float fov)
+void init_camera_3d(vec3 src, vec3 dest, float fov)
 {
 	u16 pnorm;
 
-	vec3_t src, dest;
-	vecSet(src, src_x, src_y, src_z);
-	vecSet(dest, dest_x, dest_y, dest_z);
-
-	vecSet(cam.pos, src[0], src[1], src[2]);
-
-	guPerspective(&projection, &pnorm, fov, 1.3333333, 50.0, 5000.0, 0.5);
+	guPerspective(&projection, &pnorm, fov, 1.3333333, 50.0, 5000.0, 1.0);
 	guLookAt
 	(
 		&viewing,
 		
 		// Position coordinates
-		cam.pos[0],
-		cam.pos[1],
-		cam.pos[2],
+		src.x,
+		src.y,
+		src.z,
 		
 		// Destination coordinates
-		dest[0],
-		dest[1],
-		dest[2],
+		dest.x,
+		dest.y,
+		dest.z,
 		
 		// Up-facing coordinates
 		0,
@@ -59,25 +55,26 @@ void init_camera_3d(simpleObj cam, float src_x, float src_y, float src_z, float 
 	gSPPerspNormalize(glistp++, pnorm);
 }
 
-void render_object(Gfx* obj_dl, vec3_t* obj_pos, vec3_t* obj_rot, float size)
+void render_object(simpleObj *obj)
 {
 	if (vtx_count >= MAX_VTX) return;
 
 	guPosition
 	(
 		&vtx[vtx_count],
-		(*obj_rot)[0],
-		(*obj_rot)[1],
-		(*obj_rot)[2],
-		size,
-		(*obj_pos)[0],
-		(*obj_pos)[1],
-		(*obj_pos)[2]
+		(float)(obj->rot.x),
+		(float)(obj->rot.y),
+		(float)(obj->rot.z),
+		(float)(obj->scale),
+		(float)(obj->pos.x),
+		(float)(obj->pos.y),
+		(float)(obj->pos.z)
 	);
 
 	gSPMatrix(glistp++, OS_K0_TO_PHYSICAL(&vtx[vtx_count]), G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
 
-	gSPDisplayList(glistp++, obj_dl);
+	gSPDisplayList(glistp++, obj->dl);
+	gDPPipeSync(glistp++);
 
 	vtx_count++;
 }

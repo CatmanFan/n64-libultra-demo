@@ -5,20 +5,25 @@
 #include "config/audio.h"
 #include "config/video.h"
 
-#include "lib/fs.h"
-#include "lib/scheduler.h"
+#include "libultra-easy/types.h"
+#include "libultra-easy/fs.h"
+#include "libultra-easy/scheduler.h"
+#include "libultra-easy/stack.h"
 
 /* ============= PROTOTYPES ============= */
 
+#ifdef ENABLE_AUDIO
 static u8 sfx_buf[SFX_BUF_SIZE] __attribute__((aligned(16)));
 static u8 ptr_sfx_buf[PTR_BUF_SIZE] __attribute__((aligned(16)));
 static u8 bgm_buf[BGM_BUF_SIZE] __attribute__((aligned(16)));
 static u8 ptr_inst_buf[PTR_BUF_SIZE] __attribute__((aligned(16)));
+#endif
 
 /* ============= FUNCTIONS ============== */
 
 void init_audio()
 {
+	#ifdef ENABLE_AUDIO
 	musConfig config;
 
 	config.control_flag = 0; // Use ROM wavetables
@@ -47,17 +52,21 @@ void init_audio()
 
 	// Initialize libmus
 	MusInitialize(&config);
+	#endif
 }
 
 void load_inst(char *start, char *end, char *wbank)
 {
+	#ifdef ENABLE_AUDIO
 	// Read and register the instrument bank and its pointers. (instruments ptr file)
 	load_binary((void*)start, (void*)ptr_inst_buf, end-start);
 	MusPtrBankInitialize(ptr_inst_buf, wbank);
+	#endif
 }
 
 void play_bgm(char *start, char *end)
 {
+	#ifdef ENABLE_AUDIO
 	// Read and register the background music (song bin file)
 	load_binary((void*)start,(void*)bgm_buf, end-start);
 
@@ -66,10 +75,12 @@ void play_bgm(char *start, char *end)
 
 	// Play the song utilizing the instruments bank
 	MusStartSong(bgm_buf);
+	#endif
 }
 
 void load_sounds(char *ptr_start, char *ptr_end, char *wbank, char *start, char *end)
 {
+	#ifdef ENABLE_AUDIO
 	// Read and register the instrument bank and its pointers. (instruments ptr file)
 	load_binary((void*)ptr_start, (void*)ptr_sfx_buf, ptr_end-ptr_start);
 	MusPtrBankInitialize(ptr_sfx_buf, wbank);
@@ -77,9 +88,12 @@ void load_sounds(char *ptr_start, char *ptr_end, char *wbank, char *start, char 
 	// Read and register the sound effects. (sound effects bfx file)
 	load_binary((void*)start, (void*)sfx_buf, end-start);
 	MusFxBankInitialize(sfx_buf);
+	#endif
 }
 
 void play_sound(int index)
 {
+	#ifdef ENABLE_AUDIO
 	MusStartEffect(index);
+	#endif
 }
