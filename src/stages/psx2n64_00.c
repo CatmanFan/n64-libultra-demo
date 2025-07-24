@@ -8,8 +8,8 @@
 // #include "libultra-easy/audio.h"
 #include "libultra-easy/console.h"
 #include "libultra-easy/controller.h"
-#include "libultra-easy/crash.h"
 #include "libultra-easy/display.h"
+#include "libultra-easy/fault.h"
 #include "libultra-easy/rcp.h"
 #include "libultra-easy/gfx_2d.h"
 #include "libultra-easy/gfx_3d.h"
@@ -57,6 +57,7 @@ static sprite_t fade;
 static bool fadeout;
 
 static int scale_2d;
+static int wait_transition;
 
 #define BIOS_VER 4.0
 static float BIOS = BIOS_VER;
@@ -111,6 +112,7 @@ void psx2n64_00_init()
 	fade.scale_x = 600.0;
 	fade.scale_y = 400.0;
 	fadeout = FALSE;
+	wait_transition = 0;
 
 	// sprite_create_tlut(&sce_text_0, pyoro_tex, pyoro_tlut, 16, 16, 1, G_IM_SIZ_4b);
 	if (BIOS < 4.0)
@@ -180,12 +182,17 @@ void psx2n64_00_update()
 	}
 
 	if (!fadeout)
-		fade.a = time_elapsed < time_1 ? 255 : time_elapsed < time_2 ? 255 * (time_1 - time_elapsed) : 0;
+		fade.a = time_elapsed < time_1 ? 255 : time_elapsed < time_2 ? round(255.0 * (time_1 - time_elapsed)) : 0;
 	else
 	{
-		fade.a =  255 * ((time_elapsed - (time_3 + time_4)) / time_fadeout);
+		fade.a = round(255.0 * ((time_elapsed - (time_3 + time_4)) / time_fadeout));
 		if (fade.a > 255)
-			target_stage = 11;
+		{
+			fade.a = 255;
+			wait_transition++;
+			if (wait_transition == 2)
+				target_stage = 11;
+		}
 	}
 }
 
@@ -198,7 +205,7 @@ void psx2n64_00_render()
 	vec3 dest = {0, 0, -1};
 
 	clear_zfb();
-	clear_cfb(fade.a >= 255 ? 0 : 176, fade.a >= 255 ? 0 : 176, fade.a >= 255 ? 0 : 176);
+	clear_cfb(fade.a < 255 ? 176 : 0, fade.a < 255 ? 176 : 0, fade.a < 255 ? 176 : 0);
 
 	if (!fadeout)
 	{

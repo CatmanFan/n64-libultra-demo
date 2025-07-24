@@ -9,7 +9,7 @@
 #include "config/usb.h"
 
 #include "libultra-easy/types.h"
-#include "libultra-easy/crash.h"
+#include "libultra-easy/fault.h"
 #include "libultra-easy/fs.h"
 #include "libultra-easy/rcp.h"
 

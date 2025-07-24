@@ -5,8 +5,8 @@
 #include "config/video.h"
 
 #include "libultra-easy/types.h"
-#include "libultra-easy/crash.h"
 #include "libultra-easy/display.h"
+#include "libultra-easy/fault.h"
 #include "libultra-easy/gfx.h"
 #include "libultra-easy/rcp.h"
 
@@ -18,10 +18,11 @@
 /* ============= PROTOTYPES ============= */
 
 extern int language;
+extern void *load_glyph(Font *font, int glyph);
 
 /* ============= FUNCTIONS ============== */
 
-u32 utf8_to_cp(const char **str)
+static u32 utf8_to_cp(const char **str)
 {
 	u8 *s = (u8 *)*str;
 	u32 c = *s++;
@@ -93,6 +94,9 @@ void console_puts(const char *txt, ...)
 	_Printf(&printf_handler, buf + strlen(buf), txt, args);
 
 	va_end(args);
+
+	if (strlen(txt) == 1 && txt[0] == '\n')
+		return;
 
 	buf[strlen(buf)] = '\n';
 	buf[strlen(buf) + 1] = '\0';
@@ -170,7 +174,7 @@ static void draw_glyph_raw(Font *font, int g, int x, int y)
 			{
 				int chr_x = ptr_x - x;
 				int chr_y = ptr_y - y;
-				u8 *chr = (u8 *)font->bmp + i * (font->glyphs[0].width * font->glyphs[0].height);
+				u8 *chr = (u8 *)(load_glyph(font, i));
 
 				*ptr = i >= 0 && chr[chr_x + (w * chr_y)] == 0x01
 					 ? white : black;
@@ -228,95 +232,10 @@ static void draw_text_raw(int x, int y, const char *txt, Font font)
 
 static void draw_text_dl(int x, int y, int scale, const char *txt, Font *font)
 {
-	int text_x = x * font->glyphs[0].width, text_y = y * font->glyphs[0].height;
-	int c;
-	const char *chr;
-
-	int w, h, i;
-
-	x = text_x;
-	y = text_y;
-	chr = txt;
-
-	// Initialize display list
-	gDPPipeSync(glistp++);
-	gDPSetCycleType(glistp++, G_CYC_1CYCLE);
-
-	// G_CC_MODULATERGBA_PRIM is required for tinting, G_RM_XLU_SURF and G_CC_DECALRGBA required for transparency
-	gDPSetCombineMode(glistp++, G_CC_DECALRGB, G_CC_DECALRGB);
-	gDPSetRenderMode(glistp++, G_RM_NOOP, G_RM_NOOP);
-	gDPSetTexturePersp(glistp++, G_TP_NONE);
-
-	// Set blend color to transparent
-	// gDPSetBlendColor(glistp++, 0, 0, 0, 1);
-	// gDPSetAlphaCompare(glistp++, G_AC_THRESHOLD);
-
-	for (c = 0; c < strlen(txt); c++)
-	{
-		if (*chr == '\0') { goto end; }
-		else if (*chr == '\n') { x = text_x; y += font->glyphs[0].height * scale; chr++; }
-		else
-		{
-			bool found = FALSE;
-			u32 cp = utf8_to_cp(&chr);
-
-			int g;
-			for (g = 0; g < 500; g++)
-				if (font->glyphs[g].chr == cp)
-				{
-					found = TRUE;
-					goto draw;
-				}
-
-			// Set default character to draw if none is found.
-			// If the language is set to Japanese, preferably no empty space should be drawn
-			// to avoid potential drawing spacing issues.
-			#if LANGUAGE == JA
-			g = -1;
-			#else
-			g = 0;
-			#endif
-
-			draw:
-			// Set font helper variables
-			w = g < 0 ? 0                           : font->glyphs[g].width * scale;
-			h = g < 0 ? font->glyphs[0].height      : font->glyphs[g].height * scale;
-			i = g < 0 ? font->glyphs[0].glyph_index : font->glyphs[g].glyph_index;
-
-			gDPSetFillColor(glistp++, GPACK_RGBA5551(0, 0, 0, 1) << 16 | GPACK_RGBA5551(0, 0, 0, 1));
-			gDPFillRectangle(glistp++, x, y, x + w, y + h);
-
-			if (g >= 0 && font->glyphs[g].chr != ' ')
-			{
-				gDPSetTextureLUT(glistp++, G_TT_RGBA16);
-				gDPLoadTLUT_pal256(glistp++, font->tlut);
-
-				gDPLoadTextureTile(glistp++, font->bmp + i * (font->glyphs[0].width * font->glyphs[0].height), G_IM_FMT_CI, G_IM_SIZ_8b, w, h, 0, 0, w, h, 0, 0, 0, 0, 0, 0, 0);
-				gSPTextureRectangle
-				(
-					glistp++,
-					x << 2,
-					y << 2,
-					(x + w) << 2,
-					(y + h) << 2,
-					G_TX_RENDERTILE,
-					0 << 5, 0 << 5,
-					1 << 10, 1 << 10
-				);
-
-				gDPSetTextureLUT(glistp++, G_TT_NONE);
-			}
-
-			if (found) x += w;
-			if (x > display_width() - text_x) { x = text_x; y += h; }
-			if (y >= display_height() - font->glyphs[0].height - h) { y = text_y; }
-		}
-	}
-
-	end:
-	// Finalize display list
-	// gDPSetAlphaCompare(glistp++, G_AC_NONE);
-	gDPPipeSync(glistp++);
+	extern void draw_text(const char *txt, Font *font, int x, int y, int bounds_w, int bounds_h, int align, int line_spacing, bool line_wrap, bool transparent);
+	x *= font->glyphs[0].width;
+	y *= font->glyphs[0].height;
+	draw_text(txt, font, x, y, 0, 0, 0, 0, TRUE, FALSE);
 }
 
 /* ============== GLOBAL =============== */

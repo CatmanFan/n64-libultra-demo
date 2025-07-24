@@ -3,26 +3,18 @@
 #include <assert.h>
 #include <stdarg.h>
 #include <string.h>
-
-/* === Configuration === */
-#include "config/global.h"
-#include "config/usb.h"
-
-/* === Default libraries === */
-#include "libultra-easy/types.h"
-#include "libultra-easy/console.h"
-#include "libultra-easy/controller.h"
-#include "libultra-easy/display.h"
-#include "libultra-easy/gfx.h"
-#include "libultra-easy/scheduler.h"
-
-/* === Custom libraries === */
+#include "libultra-easy.h"
 #include "strings.h"
 
 /* ============= PROTOTYPES ============= */
 
 extern Scheduler scheduler;
-extern OSMesgQueue msgQ_crash;
+
+static OSThread fault_thread;
+static OSMesg msg_fault;
+static OSMesgQueue msgQ_fault;
+
+static void fault_threadentry(void *arg);
 
 /* ========== STATIC VARIABLES ========== */
 
@@ -58,13 +50,13 @@ static bool update_fb = FALSE;
 
 /* ========== STATIC FUNCTIONS ========== */
 
-void render_crash_screen()
+void render_fault_screen()
 {
 	extern void tint_screen_raw();
 
 	if (!tinted_screen)
 	{
-		debug_printf("[Fatal] Rendering crash screen to CPU\n");
+		debug_printf("[Fatal] Rendering fault screen to CPU\n");
 		tint_screen_raw();
 		tinted_screen = TRUE;
 	}
@@ -131,7 +123,7 @@ void render_crash_screen()
 	console_draw_raw();
 }
 
-static void init_crash()
+static void enter_fault()
 {
 	debug_printf("[Fatal] Exception occurred at thread %d: %s\n", (int)thread->id, strlen(custom_desc) > 0 ? custom_desc : gCauseDesc[cause]);
 	debug_printf("[GP Registers]\n");
@@ -177,7 +169,7 @@ static void init_crash()
 	{
 		if (update_fb)
 		{
-			render_crash_screen();
+			render_fault_screen();
 			osWritebackDCacheAll();
 			osViBlack(FALSE);
 			osViSwapBuffer(osViGetCurrentFramebuffer());
@@ -204,6 +196,19 @@ static void init_crash()
 
 /* ========== GLOBAL FUNCTIONS ========== */
 
+void init_fault()
+{
+	// Initialize message queues
+    osCreateMesgQueue(&msgQ_fault, &msg_fault, 1);
+    osSetEventMesg(OS_EVENT_CPU_BREAK, &msgQ_fault, (OSMesg)0x0A);
+    osSetEventMesg(OS_EVENT_SP_BREAK, &msgQ_fault, (OSMesg)0x0B);
+    osSetEventMesg(OS_EVENT_FAULT, &msgQ_fault, (OSMesg)0x0C);
+
+	// Initialize fault screen queue and thread
+	osCreateThread(&fault_thread, ID_FAULT, fault_threadentry, NULL, REAL_STACK(FAULT), PR_FAULT);
+	osStartThread(&fault_thread);
+}
+
 void crash()
 {
 	// TLB exception on load/instruction fetch
@@ -222,14 +227,10 @@ void crash_msg(char *msg)
 	crash();
 }
 
-void crash_loop(void *arg)
+static void fault_threadentry(void *arg)
 {
 	OSMesg msg;
 	s32 eventFlags;
-
-    osSetEventMesg(OS_EVENT_CPU_BREAK, &msgQ_crash, (OSMesg)0x0A);
-    // osSetEventMesg(OS_EVENT_SP_BREAK, &msgQ_crash, (OSMesg)0x0B);
-    osSetEventMesg(OS_EVENT_FAULT, &msgQ_crash, (OSMesg)0x0C);
 
     thread = (OSThread *)NULL;
 	while (1)
@@ -237,13 +238,13 @@ void crash_loop(void *arg)
 		if (thread == NULL)
 		{
 			// Wait until fault message is received
-			(void) osRecvMesg(&msgQ_crash, (OSMesg *)&msg, OS_MESG_BLOCK);
+			(void) osRecvMesg(&msgQ_fault, (OSMesg *)&msg, OS_MESG_BLOCK);
 			eventFlags |= (s32)msg;
 
 			// Identify faulted thread
 			thread = (OSThread *)__osGetCurrFaultedThread();
 
-			// Initiate crash screen process if fault is detected
+			// Initiate screen if fault is detected
 			if (thread && ((eventFlags & 0x0A) || (eventFlags & 0x0B) || (eventFlags & 0x0C)))
 			{
 				tc = &thread->context;
@@ -253,7 +254,7 @@ void crash_loop(void *arg)
 				if (cause == 31) // EXC_VCED
 					cause = 17;
 
-				init_crash();
+				enter_fault();
 				return;
 			}
 		}

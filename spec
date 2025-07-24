@@ -8,7 +8,9 @@ beginseg
 	name    "code"
 	flags   BOOT OBJECT
 	entry   boot
-	stack   boot_stack + STACK_SIZE_BOOT
+	address 0x80000400
+	maxsize 0x00100000
+	stack   STACK_ADDR_BOOT + STACK_SIZE_BOOT
 	include $(CODESEGMENT)
 	include "$(ROOT)/usr/lib/PR/rspboot.o"
 	include "$(ROOT)/usr/lib/PR/gspF3DEX2.fifo.o"

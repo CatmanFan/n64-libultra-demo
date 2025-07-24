@@ -6,10 +6,10 @@
 
 /* === Default libraries === */
 #include "libultra-easy/types.h"
-#include "libultra-easy/audio.h"
+// #include "libultra-easy/audio.h"
 #include "libultra-easy/console.h"
 #include "libultra-easy/controller.h"
-#include "libultra-easy/crash.h"
+#include "libultra-easy/fault.h"
 #include "libultra-easy/fs.h"
 #include "libultra-easy/rcp.h"
 // #include "libultra-easy/gfx_2d.h"
@@ -81,31 +81,11 @@ void test_00_init()
 	scale = 1.0;
 
 	vec3_set(camera, 0, 600, 1600);
-	display_set(1);
 
 	obj_type = 0;
 
-	load_sounds
-	(
-		ROM_START(pbank_sfx1),
-		ROM_END(pbank_sfx1),
-		ROM_START(wbank_sfx1),
-		ROM_START(sfx1),
-		ROM_END(sfx1)
-	);
 	// The sound effects bank is now the default bank
 
-	load_inst
-	(
-		ROM_START(pbank_inst1),
-		ROM_END(pbank_inst1),
-		ROM_START(wbank_inst1)
-	);
-	play_bgm
-	(
-		ROM_START(bgm1),
-		ROM_END(bgm1)
-	);
 	// Now that I played the song, the sound effects bank has been reverted back to default
 	// (which in this case is the sound effects bank). So now I can play a sound without
 	// the need for MusPtrBankSetSingle.

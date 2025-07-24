@@ -108,12 +108,18 @@ typedef struct {
 	int glyph_index;
 	int width;
 	int height;
+	int x;
+	int y;
 } Glyph;
 
 typedef struct {
 	u8 *bmp;
+	int bmp_width;
+	int bmp_height;
+	bool multi_bmp;
 	u16 *tlut;
 	Glyph *glyphs;
+	int glyph_count;
 } Font;
 
 #endif

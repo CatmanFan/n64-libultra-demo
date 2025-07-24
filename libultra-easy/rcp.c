@@ -10,7 +10,11 @@
 #include "libultra-easy/gfx.h"
 #include "libultra-easy/rcp.h"
 #include "libultra-easy/stack.h"
-#include "libultra-easy/crash.h"
+#include "libultra-easy/fault.h"
+
+/* =================================================== *
+ *                     PROTOTYPES                      *
+ * =================================================== */
 
 Gfx glist[CFB_COUNT][GDL_SIZE]; // Dynamic global DL size
 Gfx *glistp;

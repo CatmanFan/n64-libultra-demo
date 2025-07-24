@@ -6,8 +6,8 @@
 #include "config/usb.h"
 
 #include "libultra-easy/types.h"
-#include "libultra-easy/crash.h"
 #include "libultra-easy/display.h"
+#include "libultra-easy/fault.h"
 #include "libultra-easy/gfx.h"
 #include "libultra-easy/rcp.h"
 #include "libultra-easy/scheduler.h"
@@ -29,6 +29,7 @@
 #endif
 
 #define MSG_SIZE (CFB_COUNT + 1)
+#define CFB_SIZE (SCREEN_W_HD*SCREEN_H_HD*sizeof(FB_DEPTH))
 
 /* =================================================== *
  *                     PROTOTYPES                      *
@@ -55,34 +56,35 @@ static OSMesgQueue	msg_queue_vsync;
 static OSMesg		msg_rdp;
 static OSMesgQueue	msg_queue_rdp;
 
-static void gfx_loop(void *arg);
+static void gfx_threadfunc(void *arg);
 static void gfx_render(FrameBuffer *fb, void (*func)());
 static void gfx_create_fb(int index, void *address);
 
-static volatile Scheduler *scheduler;
+static Scheduler *scheduler;
 
 /* =================================================== *
  *              GRAPHICS TASK FUNCTIONING              *
  * =================================================== */
 
-void init_gfx(volatile Scheduler *sc)
+void init_gfx(Scheduler *sc)
 {
 	// Create framebuffers
-	gfx_create_fb(0, (FB_DEPTH*)(RAMBANK_6 + RAMBANK_SIZE - (SCREEN_W_HD*SCREEN_H_HD*sizeof(FB_DEPTH))));
+	zbuffer = (u16 *)(RAMBANK_8 + RAMBANK_SIZE - (CFB_SIZE*1));
+	gfx_create_fb(0, (FB_DEPTH*)(RAMBANK_8 + RAMBANK_SIZE - (CFB_SIZE*2)));
 	if (CFB_COUNT == 2)
-		gfx_create_fb(1, (FB_DEPTH*)(RAMBANK_7 + RAMBANK_SIZE - (SCREEN_W_HD*SCREEN_H_HD*sizeof(FB_DEPTH))));
+		gfx_create_fb(1, (FB_DEPTH*)(RAMBANK_8 + RAMBANK_SIZE - (CFB_SIZE*3)));
 	if (CFB_COUNT == 3)
-		gfx_create_fb(2, (FB_DEPTH*)(RAMBANK_8 + RAMBANK_SIZE - (SCREEN_W_HD*SCREEN_H_HD*sizeof(FB_DEPTH))));
+		gfx_create_fb(2, (FB_DEPTH*)(RAMBANK_8 + RAMBANK_SIZE - (CFB_SIZE*4)));
 
 	// Set scheduler
 	scheduler = sc;
 
 	// Start the graphics thread
-	osCreateThread(&gfx_thread, ID_GFX, gfx_loop, NULL, &gfx_stack[STACK_SIZE_GFX / sizeof(u64)], PR_GFX);
+	osCreateThread(&gfx_thread, ID_GFX, gfx_threadfunc, NULL, REAL_STACK(GFX), PR_GFX);
 	osStartThread(&gfx_thread);
 }
 
-static void gfx_loop(void *arg)
+static void gfx_threadfunc(void *arg)
 {
 	fb_target = NULL;
 	fb_last = NULL;

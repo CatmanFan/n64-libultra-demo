@@ -2,6 +2,7 @@
 #define __GFX_H__
 
 #include "config/video.h"
+#include "libultra-easy/scheduler.h"
 
 enum FB_STATUS
 {
@@ -39,7 +40,7 @@ typedef struct
 /**
  * @brief Initializes the graphics subsystem and thread.
  */
-void init_gfx();
+void init_gfx(Scheduler *sc);
 
 /**
  * @brief Sends a render task request to the graphics thread.
@@ -66,6 +67,6 @@ FrameBuffer* current_framebuffer();
 /**
  * @brief The Z-Buffer. Remains stationary.
  */
-u16 zbuffer[SCREEN_W_HD * SCREEN_H_HD];
+u16 *zbuffer __attribute__((aligned(16)));
 
 #endif

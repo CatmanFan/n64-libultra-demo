@@ -1,6 +1,6 @@
 #include <ultra64.h>
 #include "libultra-easy/types.h"
-#include "libultra-easy/crash.h"
+#include "libultra-easy/fault.h"
 
 /* Available OR values for "button":
    - START_BUTTON
@@ -44,13 +44,6 @@ static OSContStatus controller_status[MAXCONTROLLERS];
 
 /* ============= FUNCTIONS ============== */
 
-bool joypad_is_pressed(Button button, int cont)
-{
-	if (!joypad_has_data)
-		crash_msg("Controller not read");
-	return controller[cont].button == button;
-}
-
 void init_controller()
 {
 	u8 bitp;
@@ -75,4 +68,11 @@ void reset_controller()
 {
 	osContReset(&msgQ_si, controller_status);
 	joypad_has_data = FALSE;
+}
+
+bool joypad_is_pressed(int button, int cont)
+{
+	if (!joypad_has_data)
+		crash_msg("Controller not read");
+	return controller[cont].button == button;
 }

@@ -22,15 +22,15 @@
     *********************************/
 
     typedef struct {
-		volatile bool         initialized;
-        volatile bool         display;
-		volatile bool         is_changing_res;
-        volatile bool         reset;      // Whether the reset button was recently pressed
-		volatile bool         crash;      // Whether the crash thread was executed
+		bool         initialized;
+        bool         display;
+		bool         is_changing_res;
+        bool         reset;      // Whether the reset button was recently pressed
+		bool         crash;      // Whether the crash thread was executed
         OSTask*               task_gfx;    // Current executing graphics task
         OSTask*               task_audio;  // Current executing audio task
-        volatile OSMesgQueue  queue;
-        volatile OSMesg       msg[SC_MSG_COUNT];
+        OSMesgQueue  queue;
+        OSMesg       msg[SC_MSG_COUNT];
         OSMesgQueue*          gfx_notify;
     } Scheduler;
 
@@ -38,7 +38,7 @@
                 Functions
     *********************************/
 
-    volatile Scheduler* init_scheduler();
+    Scheduler* init_scheduler();
 	int scheduler_get_status();
 
 #endif

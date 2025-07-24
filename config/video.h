@@ -41,7 +41,6 @@
  * Configure color framebuffer count and size.
  */
 #define CFB_COUNT 2
-#define CFB_SIZE  SCREEN_W_HD*SCREEN_H_HD*2
 
 /**
  * Define the size of dynamic display lists.
