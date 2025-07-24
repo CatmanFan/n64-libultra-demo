@@ -1,19 +1,19 @@
 #ifndef __AUDIO_H__
 #define __AUDIO_H__
 
-#include <PR/libmus.h>
+	#include "libultra-easy/types.h"
 
-/* ============= FUNCTIONS ============== */
+	/* ============= FUNCTIONS ============== */
 
-/**
- * @brief Initializes the audio subsystem.
- */
-void init_audio();
+	/**
+	 * @brief Initializes the audio subsystem.
+	 */
+	void init_audio();
 
-extern void load_inst(char* pbank_start, char* pbank_end, char* wbank_start);
-extern void play_bgm(char* title_start, char* title_end);
+	void load_inst(char* pbank_start, char* pbank_end, char* wbank_start);
+	void play_bgm(char* title_start, char* title_end);
 
-extern void load_sounds(char* pbank_start, char* pbank_end, char* wbank_start, char* title_start, char* title_end);
-extern void play_sound(int index);
+	void load_sounds(char* pbank_start, char* pbank_end, char* wbank_start, char* title_start, char* title_end);
+	void play_sound(int index);
 
 #endif

@@ -1,8 +1,33 @@
 #include <ultra64.h>
-#include <PR/sched.h>
 #include "config/global.h"
 
-// Check that all stack sizes are valid before declaring the stacks
+// Check that all stack addresses are aligned
+#if (STACK_ADDR_BOOT%8 != 0)
+	#error Boot stack is not 64-bit aligned
+#endif
+#if (STACK_ADDR_IDLE%8 != 0)
+	#error Idle stack is not 64-bit aligned
+#endif
+#if (STACK_ADDR_MAIN%8 != 0)
+	#error Main stack is not 64-bit aligned
+#endif
+#if (STACK_ADDR_FAULT%8 != 0)
+	#error Fault stack is not 64-bit aligned
+#endif
+#if (STACK_ADDR_SCHEDULER%8 != 0)
+	#error Scheduler stack is not 64-bit aligned
+#endif
+#if (STACK_ADDR_GFX%8 != 0)
+	#error Graphics stack is not 64-bit aligned
+#endif
+#if (STACK_ADDR_AUDIO%8 != 0)
+	#error Audio stack is not 64-bit aligned
+#endif
+#if (STACK_ADDR_RDPFIFO%16 != 0)
+	#error RDP FIFO stack is not 16-bit aligned
+#endif
+
+// Check that all stack sizes are valid
 #if STACK_SIZE < OS_MIN_STACKSIZE
 	#error General stack size is smaller than OS_MIN_STACKSIZE
 #endif
@@ -15,7 +40,7 @@
 #if STACK_SIZE_MAIN < OS_MIN_STACKSIZE
 	#error Main stack size is smaller than OS_MIN_STACKSIZE
 #endif
-#if STACK_SIZE_CRASH < OS_MIN_STACKSIZE
+#if STACK_SIZE_FAULT < OS_MIN_STACKSIZE
 	#error Fault stack size is smaller than OS_MIN_STACKSIZE
 #endif
 #if STACK_SIZE_SCHEDULER < OS_MIN_STACKSIZE
@@ -31,16 +56,9 @@
 	#error RDP FIFO stack size is smaller than 256 bytes
 #endif
 
-volatile u64 idle_stack[STACK_SIZE_IDLE / sizeof(u64)] __attribute__((aligned(16)));
-volatile u64 main_stack[STACK_SIZE_MAIN / sizeof(u64)] __attribute__((aligned(16)));
-volatile u64 crash_stack[STACK_SIZE_CRASH / sizeof(u64)] __attribute__((aligned(16)));
-volatile u64 scheduler_stack[OS_SC_STACKSIZE / sizeof(u64)] __attribute__((aligned(16)));
-volatile u64 gfx_stack[STACK_SIZE_GFX / sizeof(u64)] __attribute__((aligned(16)));
-volatile u64 audio_stack[STACK_SIZE_AUDIO / sizeof(u64)] __attribute__((aligned(16)));
-
 // Display list processing results buffer
-volatile u64 fifo_buffer[STACK_SIZE_RDPFIFO] __attribute__((aligned(16)));
+u64 fifo_buffer[STACK_SIZE_RDPFIFO] __attribute__((aligned(16)));
 // Microcode matrix stack
-volatile u64 dram_stack[SP_DRAM_STACK_SIZE8] __attribute__((aligned(16)));
+u64 dram_stack[SP_DRAM_STACK_SIZE8] __attribute__((aligned(16)));
 // Audio buffer
-volatile u64 yield_buffer[OS_YIELD_DATA_SIZE] __attribute__((aligned(16)));
+u64 yield_buffer[OS_YIELD_DATA_SIZE] __attribute__((aligned(16)));

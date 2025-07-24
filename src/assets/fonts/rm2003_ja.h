@@ -7,9 +7,13 @@
 
 	Font rm2003_ja =
 	{
-		(u8 *)rm2003_ja_img,
-		terminus_tlut,
-		rm2003_ja_glyphs,
+		.bmp			= (u8 *)rm2003_ja_img,
+		.bmp_width		= 12,
+		.bmp_height		= 12,
+		.multi_bmp		= TRUE,
+		.tlut			= terminus_tlut,
+		.glyphs			= rm2003_ja_glyphs,
+		.glyph_count	= 274
 	};
 
 #endif

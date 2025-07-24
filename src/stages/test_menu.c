@@ -14,6 +14,7 @@
 #include "libultra-easy/controller.h"
 #include "libultra-easy/fs.h"
 #include "libultra-easy/display.h"
+#include "libultra-easy/fault.h"
 #include "libultra-easy/rcp.h"
 #include "libultra-easy/gfx_2d.h"
 // #include "libultra-easy/gfx_3d.h"
@@ -43,7 +44,7 @@ void test_menu_init()
 	time_reset();
 	fade_opacity = 255;
 
-	// display_set(1);
+	display_set(0);
 
 	selected_stage = offset;
 
@@ -89,6 +90,7 @@ void test_menu_update()
 /* ==============================
  * Renders frame.
  * ============================== */
+#include "assets/fonts/terminus.h"
 void test_menu_render()
 {
 	clear_zfb();
@@ -115,7 +117,7 @@ void test_menu_render()
 	}
 
 	console_puts("FPS: %2d / delta: %0.3f", fps(), time_delta());
-	console_puts("Time: %0.3f\n", time_current());
+	console_puts("Time: %0.3f", time_current());
 	console_puts("V: %d (0: PAL/1: NTSC/2: MPAL)", VIDEO_TYPE);
 	console_puts("%dx%d", display_width(), display_height());
 	console_draw_dl();

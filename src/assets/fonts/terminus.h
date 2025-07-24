@@ -5,11 +5,6 @@
 	extern u16 terminus_tlut[];
 	extern Glyph terminus_glyphs[];
 
-	Font terminus =
-	{
-		(u8 *)terminus_img,
-		terminus_tlut,
-		terminus_glyphs,
-	};
+	extern Font terminus;
 
 #endif

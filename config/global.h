@@ -12,7 +12,7 @@
 #define ID_SCHEDULER        7
 #define ID_GFX              8
 #define ID_AUDIO            9
-#define ID_CRASH            12
+#define ID_FAULT            12
 
 /**
  * Configure thread priority values.
@@ -22,7 +22,7 @@
 #define PR_SCHEDULER        120
 #define PR_GFX              20
 #define PR_AUDIO            25
-#define PR_CRASH            OS_PRIORITY_APPMAX
+#define PR_FAULT            OS_PRIORITY_APPMAX
 
 /**
  * Configure stack sizes.
@@ -34,7 +34,7 @@
 #define STACK_SIZE_BOOT		 0x400
 #define STACK_SIZE_IDLE		 0x400
 #define STACK_SIZE_MAIN		 STACK_SIZE
-#define STACK_SIZE_CRASH	 0x1000
+#define STACK_SIZE_FAULT	 0x1000
 #define STACK_SIZE_SCHEDULER 0x2000
 #define STACK_SIZE_GFX		 0x2000
 #define STACK_SIZE_AUDIO	 0x2000
@@ -56,12 +56,12 @@
 #define RAMBANK_8				(RAMBANK_START + RAMBANK_SIZE*7)
 
 // [Starting address]
-#define CALC_STACK_ADDR(n)		(u64 *)(STACK_ADDR_##n## + STACK_SIZE_##n## / sizeof(u64))
-#define STACK_ADDR_BOOT			0x80400000
+#define REAL_STACK(n)			(u64 *)(STACK_ADDR_##n## + STACK_SIZE_##n##/sizeof(u64))
+#define STACK_ADDR_BOOT			RAMBANK_2
 #define STACK_ADDR_IDLE			(STACK_ADDR_BOOT + STACK_SIZE_BOOT)
 #define STACK_ADDR_MAIN			(STACK_ADDR_IDLE + STACK_SIZE_IDLE)
-#define STACK_ADDR_CRASH		(STACK_ADDR_MAIN + STACK_SIZE_MAIN)
-#define STACK_ADDR_SCHEDULER	(STACK_ADDR_CRASH + STACK_SIZE_CRASH)
+#define STACK_ADDR_FAULT		(STACK_ADDR_MAIN + STACK_SIZE_MAIN)
+#define STACK_ADDR_SCHEDULER	(STACK_ADDR_FAULT + STACK_SIZE_FAULT)
 #define STACK_ADDR_GFX			(STACK_ADDR_SCHEDULER + STACK_SIZE_SCHEDULER)
 #define STACK_ADDR_AUDIO		(STACK_ADDR_GFX + STACK_SIZE_GFX)
 #define STACK_ADDR_DRAM			(STACK_ADDR_AUDIO + STACK_SIZE_AUDIO)

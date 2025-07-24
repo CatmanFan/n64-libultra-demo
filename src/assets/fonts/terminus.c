@@ -2684,3 +2684,14 @@ u8 terminus_img[][6 * 12] =
 		0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 
 	},
 };
+
+Font terminus =
+{
+	.bmp			= terminus_img[0],
+	.bmp_width		= 6,
+	.bmp_height		= 12,
+	.multi_bmp		= TRUE,
+	.tlut			= terminus_tlut,
+	.glyphs			= terminus_glyphs,
+	.glyph_count	= 115
+};

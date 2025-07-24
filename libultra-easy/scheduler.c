@@ -7,24 +7,24 @@
 #include "libultra-easy/types.h"
 #include "libultra-easy/scheduler.h"
 #include "libultra-easy/stack.h"
-#include "libultra-easy/crash.h"
 #include "libultra-easy/display.h"
+#include "libultra-easy/fault.h"
 #include "libultra-easy/gfx.h"
 #include "libultra-easy/console.h"
 
 #include "strings.h"
 
-static void scheduler_loop(void *arg);
+static void scheduler_threadfunc(void *arg);
 static void scheduler_vsync();
 static void scheduler_prenmi();
 
 static OSThread	scheduler_thread;
-static volatile Scheduler scheduler;
-static volatile int scheduler_msg;
+static Scheduler scheduler;
+static int scheduler_msg;
 
 FrameBuffer* fb_current;
 
-volatile Scheduler* init_scheduler()
+Scheduler* init_scheduler()
 {
 	// Initialize globals
 
@@ -51,7 +51,7 @@ volatile Scheduler* init_scheduler()
 	osSetEventMesg(OS_EVENT_PRENMI, &scheduler.queue, (OSMesg)SC_MSG_PRENMI);
 
 	// Start the scheduler thread
-	osCreateThread(&scheduler_thread, ID_SCHEDULER, scheduler_loop, NULL, &scheduler_stack[STACK_SIZE_SCHEDULER / sizeof(u64)], PR_SCHEDULER);
+	osCreateThread(&scheduler_thread, ID_SCHEDULER, scheduler_threadfunc, NULL, REAL_STACK(SCHEDULER), PR_SCHEDULER);
 	osStartThread(&scheduler_thread);
 
 	// Return the scheduler object
@@ -59,7 +59,7 @@ volatile Scheduler* init_scheduler()
 	return &scheduler;
 }
 
-static void scheduler_loop(void *arg)
+static void scheduler_threadfunc(void *arg)
 {
 	OSMesg msg;
 

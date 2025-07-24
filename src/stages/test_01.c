@@ -9,6 +9,7 @@
 #include "libultra-easy/console.h"
 #include "libultra-easy/controller.h"
 #include "libultra-easy/display.h"
+#include "libultra-easy/fault.h"
 #include "libultra-easy/rcp.h"
 // #include "libultra-easy/gfx_2d.h"
 #include "libultra-easy/gfx_3d.h"

@@ -9,22 +9,11 @@
 // Thread functions
 static void idle(void *);
 static void main(void *);
-extern void crash_loop(void *);
-
-// Stacks
-u64 boot_stack[STACK_SIZE_BOOT / sizeof(u64)];
 
 OSThread idle_thread;
 OSThread main_thread;
-OSThread crash_thread;
 
-volatile Scheduler* scheduler;
-
-/* ============== MESSAGES ============== */
-
-// Crash screen
-OSMesg msg_crash;
-OSMesgQueue msgQ_crash;
+Scheduler* scheduler;
 
 /* =========== MAIN FUNCTIONS =========== */
 
@@ -33,20 +22,15 @@ void boot(void* arg)
 {
 	osInitialize();
 	osAiSetFrequency(AUDIO_BITRATE);
-	osCreateThread(&idle_thread, ID_IDLE, idle, arg, &idle_stack[STACK_SIZE_IDLE / sizeof(u64)], PR_IDLE);
+	osCreateThread(&idle_thread, ID_IDLE, idle, arg, REAL_STACK(IDLE), PR_IDLE);
 	osStartThread(&idle_thread);
 }
 
 static void idle(void *arg)
 {
 	// Initialize main thread
-	osCreateThread(&main_thread, ID_MAIN, main, arg, &main_stack[STACK_SIZE_MAIN / sizeof(u64)], PR_MAIN);
+	osCreateThread(&main_thread, ID_MAIN, main, arg, REAL_STACK(MAIN), PR_MAIN);
 	osStartThread(&main_thread);
-
-	// Initialize crash screen queue and thread
-    osCreateMesgQueue(&msgQ_crash, &msg_crash, 1);
-	osCreateThread(&crash_thread, ID_CRASH, crash_loop, NULL, &crash_stack[STACK_SIZE_CRASH / sizeof(u64)], PR_CRASH);
-	osStartThread(&crash_thread);
 
 	// Relinquish CPU
 	osSetThreadPri(NULL, 0);
@@ -73,18 +57,19 @@ static void main(void *arg)
 	debug_printf("[Boot] Setting default language\n");
 	language = 0;
 	change_language();				// Language
+	init_fault();
 
 	debug_printf("[Boot] Initializing graphics\n");
 	init_gfx(scheduler);			// Graphics
 	debug_printf("[Boot] Initializing audio\n");
-	init_audio();					// Audio player
+	// init_audio();					// Audio player
 	debug_printf("[Boot] Initializing controller\n");
 	init_controller();				// Controller/SI
 	// ======================================================
 
 	// Initialize boot stage
 	debug_printf("[Boot] Initializing game engine\n");
-	change_stage(-1);
+	change_stage(11); // -1
 
 	// Start permanent loop
 	while (1)
