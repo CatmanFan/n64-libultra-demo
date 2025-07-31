@@ -3,7 +3,7 @@
 
 	#include "libultra-easy/types.h"
 
-	extern Gfx *glistp;
+	Gfx *glistp;
 
 	void rcp_start();
 	void rcp_init_rdp();
@@ -13,7 +13,7 @@
 	void clear_zfb();
 	void clear_cfb(int r, int g, int b);
 
-	void draw_rectangle(int x, int y, int w, int h, u32 color);
-	void draw_gradient(int x, int y, int w, int h, u32 color1, u32 color2, bool horizontal);
+	void draw_rectangle(int x, int y, int w, int h, int color);
+	void draw_gradient(int x, int y, int w, int h, int color1, int color2, bool horizontal);
 
 #endif

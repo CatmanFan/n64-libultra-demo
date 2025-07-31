@@ -1,32 +1,35 @@
 #include <ultra64.h>
-
-#include "config/global.h"
-#include "config/video.h"
-#include "config/usb.h"
-
-#include "libultra-easy/types.h"
-#include "libultra-easy/scheduler.h"
-#include "libultra-easy/stack.h"
-#include "libultra-easy/display.h"
-#include "libultra-easy/fault.h"
-#include "libultra-easy/gfx.h"
-#include "libultra-easy/console.h"
-
+#include "libultra-easy.h"
 #include "strings.h"
 
-static void scheduler_threadfunc(void *arg);
+/* =================================================== *
+ *                 FUNCTION PROTOTYPES                 *
+ * =================================================== */
+
+static void scheduler_threadfunc(void *arg) __attribute__ ((noreturn));
 static void scheduler_vsync();
 static void scheduler_prenmi();
 
+/* =================================================== *
+ *                     PROTOTYPES                      *
+ * =================================================== */
+
 static OSThread	scheduler_thread;
 static Scheduler scheduler;
-static int scheduler_msg;
 
+/**
+ * @brief Returns the framebuffer currently in use.
+ */
 FrameBuffer* fb_current;
+
+/* =================================================== *
+ *                      FUNCTIONS                      *
+ * =================================================== */
 
 Scheduler* init_scheduler()
 {
 	// Initialize globals
+	fb_current = NULL;
 
 	// Initialize the scheduler
 	scheduler.initialized = FALSE;
@@ -34,9 +37,11 @@ Scheduler* init_scheduler()
 	scheduler.is_changing_res = FALSE;
 	scheduler.reset = FALSE;
 	scheduler.crash = FALSE;
+	scheduler.current_status = SC_MSG_IDLE;
 	scheduler.task_gfx = NULL;
 	scheduler.task_audio = NULL;
 	scheduler.gfx_notify = NULL;
+	scheduler.audio_notify = NULL;
 	osCreateMesgQueue(&scheduler.queue, scheduler.msg, SC_MSG_COUNT);
 
 	// Initialize the TV
@@ -74,9 +79,9 @@ static void scheduler_threadfunc(void *arg)
 			while (scheduler.is_changing_res) { ; }
 		}
 
-		scheduler_msg = (int)msg;
+		scheduler.current_status = (int)msg;
 
-		switch (scheduler_msg)
+		switch (scheduler.current_status)
 		{
 			case SC_MSG_VSYNC:
 				if (scheduler.gfx_notify != NULL)
@@ -85,6 +90,12 @@ static void scheduler_threadfunc(void *arg)
 					scheduler.gfx_notify = NULL;
 				}
 				scheduler_vsync();
+
+				if (scheduler.audio_notify != NULL)
+					osSendMesg(scheduler.audio_notify, NULL, OS_MESG_BLOCK);
+				break;
+
+			case SC_MSG_AUDIO:
 				break;
 
 			case SC_MSG_PRENMI:
@@ -95,7 +106,7 @@ static void scheduler_threadfunc(void *arg)
 				display_set(0);
 				my_assert(FALSE, "RCP hang");
 				break;
-				
+
 			default:
 				break;
 		}
@@ -105,18 +116,24 @@ static void scheduler_threadfunc(void *arg)
 static void render_reset_screen()
 {
 	// Draw "restarting" screen
-	extern void clear_screen_raw();
+	extern void clear_screen_raw(FrameBuffer *fb);
+
+	if (scheduler.crash == TRUE)
+		return;
+
+	osViBlack(FALSE);
 	debug_printf("[Scheduler] Rendering Pre-NMI screen to CPU\n");
 
-	clear_screen_raw();
-	console_clear();
-	console_puts(str_00);
-	console_draw_raw();
-
-	osWritebackDCacheAll();
-	osViBlack(FALSE);
 	if (fb_current != NULL)
+	{
+		clear_screen_raw(fb_current);
+		console_clear();
+		console_puts("%s", strings[0]);
+		console_draw_raw(fb_current);
+
+		osWritebackDCache(fb_current->address, fb_current->size);
 		osViSwapBuffer(fb_current->address);
+	}
 }
 
 static void scheduler_vsync()
@@ -134,7 +151,7 @@ static void scheduler_vsync()
 		}
 	}
 
-	else
+	else if (!scheduler.crash)
 	{
 		extern FrameBuffer* return_ready_framebuffer();
 		FrameBuffer *fb = return_ready_framebuffer();
@@ -152,17 +169,27 @@ static void scheduler_vsync()
 	}
 }
 
+void scheduler_discard_inactive_framebuffers()
+{
+	extern int num_active_framebuffers();
+	int i;
+	for (i = 0; i < num_active_framebuffers(); i++)
+	{
+		if (framebuffers[i].address != fb_current)
+			framebuffers[i].status = FB_BUSY;
+		else
+			framebuffers[i].status = FB_READY;
+	}
+}
+
 static void scheduler_prenmi()
 {
 	debug_printf("[Scheduler] Reset button pressed, initiating pre-NMI\n");
 	osViSetYScale(1.0);
 	// Stop threads go here
+	gfx_close();
+	audio_close();
 	osSpTaskYield();
 	osAfterPreNMI();
 	scheduler.reset = TRUE;
-}
-
-int scheduler_get_status()
-{
-	return scheduler_msg;
 }

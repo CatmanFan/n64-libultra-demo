@@ -1,23 +1,12 @@
 #include <ultra64.h>
 #include <math.h>
-
-#include "config/global.h"
-#include "config/video.h"
-#include "config/usb.h"
-
-#include "libultra-easy/types.h"
-#include "libultra-easy/display.h"
-#include "libultra-easy/gfx.h"
-#include "libultra-easy/rcp.h"
-#include "libultra-easy/stack.h"
-#include "libultra-easy/fault.h"
+#include "libultra-easy.h"
 
 /* =================================================== *
  *                     PROTOTYPES                      *
  * =================================================== */
 
 Gfx glist[CFB_COUNT][GDL_SIZE]; // Dynamic global DL size
-Gfx *glistp;
 
 static RenderTask *cur_task = NULL;
 static OSTask rcp_task = 
@@ -26,12 +15,12 @@ static OSTask rcp_task =
 	.flags            = OS_TASK_DP_WAIT | OS_TASK_LOADABLE,
 	.ucode_size       = SP_UCODE_SIZE,
 	.ucode_data_size  = SP_UCODE_DATA_SIZE,
-	.dram_stack       = (u64*)&dram_stack,
-	.dram_stack_size  = SP_DRAM_STACK_SIZE8,
-	.output_buff      = (u64*)&fifo_buffer,
-	.output_buff_size = &fifo_buffer[STACK_SIZE_RDPFIFO / sizeof(u64)],
-	.yield_data_ptr   = (u64*)&yield_buffer,
-	.yield_data_size  = OS_YIELD_DATA_SIZE,
+	.dram_stack       = (u64*)STACK_ADDR_DRAM,
+	.dram_stack_size  = STACK_SIZE_DRAM,
+	.output_buff      = (u64*)STACK_ADDR_RDPFIFO,
+	.output_buff_size = (u64*)(STACK_ADDR_RDPFIFO + STACK_SIZE_RDPFIFO),
+	.yield_data_ptr   = (u64*)STACK_ADDR_YIELD,
+	.yield_data_size  = STACK_SIZE_YIELD,
 }};
 
 /* =================================================== *
@@ -63,7 +52,7 @@ void rcp_init_rdp()
 	gDPSetCombineKey(glistp++, G_CK_NONE);
 	gDPSetAlphaCompare(glistp++, G_AC_NONE);
 	gDPSetRenderMode(glistp++, G_RM_OPA_SURF, G_RM_OPA_SURF2);
-	gDPSetColorDither(glistp++, G_CD_ENABLE);
+	gDPSetColorDither(glistp++, G_CD_MAGICSQ);
 	gDPPipeSync(glistp++);
 }
 
@@ -166,22 +155,26 @@ void clear_cfb(int r, int g, int b)
 	debug_printf("[RCP] Clearing framebuffer with resolution %dx%d\n", display_width(), display_height());
 	debug_printf("[RCP] Color: %x %x %x\n", r, g, b);
 #ifdef VIDEO_32BIT
-	gDPSetColorImage(glistp++, G_IM_FMT_RGBA, G_IM_SIZ_32b, display_width(), cur_task->fb);
+	gDPSetColorImage(glistp++, G_IM_FMT_RGBA, G_IM_SIZ_32b, display_width(), OS_K0_TO_PHYSICAL(cur_task->fb));
 #else
-	gDPSetColorImage(glistp++, G_IM_FMT_RGBA, G_IM_SIZ_16b, display_width(), cur_task->fb);
+	gDPSetColorImage(glistp++, G_IM_FMT_RGBA, G_IM_SIZ_16b, display_width(), OS_K0_TO_PHYSICAL(cur_task->fb));
 #endif
 	gDPSetCycleType(glistp++, G_CYC_FILL);
+#ifdef VIDEO_32BIT
+	gDPSetFillColor(glistp++, RGBA32(r,g,b,255));
+#else
 	gDPSetFillColor(glistp++, GPACK_RGBA5551(r, g, b, 1) << 16 | GPACK_RGBA5551(r, g, b, 1));
+#endif
 	gDPFillRectangle(glistp++, 0, 0, display_width() - 1, display_height() - 1);
 	gDPPipeSync(glistp++);
 }
 
-void draw_rectangle(int x, int y, int w, int h, u32 color)
+void draw_rectangle(int x, int y, int w, int h, int color)
 {
-	u32 r = (color >> 24) & 0xFF;
-	u32 g = (color >> 16) & 0xFF;
-	u32 b = (color >> 8) & 0xFF;
-	u32 a = color & 0xFF;
+	int r = (color >> 24) & 0xFF;
+	int g = (color >> 16) & 0xFF;
+	int b = (color >> 8) & 0xFF;
+	int a = color & 0xFF;
 
 	gDPSetCycleType(glistp++, G_CYC_1CYCLE);
 	gDPSetCombineMode(glistp++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
@@ -192,7 +185,7 @@ void draw_rectangle(int x, int y, int w, int h, u32 color)
 	gDPPipeSync(glistp++);
 }
 
-void draw_gradient(int x, int y, int w, int h, u32 color1, u32 color2, bool horizontal)
+void draw_gradient(int x, int y, int w, int h, int color1, int color2, bool horizontal)
 {
 	int line;
 	int end = horizontal ? w : h;
@@ -224,6 +217,6 @@ void draw_gradient(int x, int y, int w, int h, u32 color1, u32 color2, bool hori
 		b = (u32)((b1 * (1 - factor)) + (b2 * factor));
 		a = (u32)((a1 * (1 - factor)) + (a2 * factor));
 
-		draw_rectangle(rec_x, rec_y, rec_w, rec_h, RGBA(r,g,b,a));
+		draw_rectangle(rec_x, rec_y, rec_w, rec_h, RGBA32(r,g,b,a));
 	}
 }

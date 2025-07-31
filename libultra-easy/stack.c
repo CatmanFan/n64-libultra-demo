@@ -17,14 +17,26 @@
 #if (STACK_ADDR_SCHEDULER%8 != 0)
 	#error Scheduler stack is not 64-bit aligned
 #endif
+#if (STACK_ADDR_CONTROLLER%8 != 0)
+	#error Controller stack is not 64-bit aligned
+#endif
 #if (STACK_ADDR_GFX%8 != 0)
-	#error Graphics stack is not 64-bit aligned
+	#error GFX stack is not 64-bit aligned
 #endif
 #if (STACK_ADDR_AUDIO%8 != 0)
 	#error Audio stack is not 64-bit aligned
 #endif
+#if (STACK_ADDR_DRAM%16 != 0)
+	#error DRAM stack is not 16-bit aligned
+#endif
 #if (STACK_ADDR_RDPFIFO%16 != 0)
 	#error RDP FIFO stack is not 16-bit aligned
+#endif
+#if (STACK_ADDR_YIELD%16 != 0)
+	#error GFX yield stack is not 16-bit aligned
+#endif
+#if (AUDIO_HEAP_ADDR%16 != 0)
+	#error Audio heap is not 16-bit aligned
 #endif
 
 // Check that all stack sizes are valid
@@ -46,19 +58,21 @@
 #if STACK_SIZE_SCHEDULER < OS_MIN_STACKSIZE
 	#error Scheduler stack size is smaller than OS_MIN_STACKSIZE
 #endif
+#if STACK_SIZE_CONTROLLER < OS_MIN_STACKSIZE
+	#error Controller stack size is smaller than OS_MIN_STACKSIZE
+#endif
 #if STACK_SIZE_GFX < OS_MIN_STACKSIZE
-	#error Graphics stack size is smaller than OS_MIN_STACKSIZE
+	#error GFX stack size is smaller than OS_MIN_STACKSIZE
 #endif
 #if STACK_SIZE_AUDIO < OS_MIN_STACKSIZE
 	#error Audio stack size is smaller than OS_MIN_STACKSIZE
 #endif
+#if STACK_SIZE_DRAM < SP_DRAM_STACK_SIZE8
+	#error DRAM stack size is smaller than SP_DRAM_STACK_SIZE8
+#endif
 #if STACK_SIZE_RDPFIFO < 0x100
 	#error RDP FIFO stack size is smaller than 256 bytes
 #endif
-
-// Display list processing results buffer
-u64 fifo_buffer[STACK_SIZE_RDPFIFO] __attribute__((aligned(16)));
-// Microcode matrix stack
-u64 dram_stack[SP_DRAM_STACK_SIZE8] __attribute__((aligned(16)));
-// Audio buffer
-u64 yield_buffer[OS_YIELD_DATA_SIZE] __attribute__((aligned(16)));
+#if STACK_SIZE_YIELD < OS_YIELD_DATA_SIZE
+	#error GFX yield stack size is smaller than OS_YIELD_DATA_SIZE
+#endif

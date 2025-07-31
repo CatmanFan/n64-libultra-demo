@@ -1,8 +1,8 @@
 #include "config/global.h"
 
-// ------------------------------
-
-/* ======= CODESEGMENT ======= */
+/* =================================================== *
+ *                     CODE SEGMENT                    *
+ * =================================================== */
 
 beginseg
 	name    "code"
@@ -23,9 +23,9 @@ beginseg
 	include "$(ROOT)/usr/lib/PR/aspMain.o"
 endseg
 
-// ------------------------------
-
-/* ========= OBJECTS ========= */
+/* =================================================== *
+ *                       OBJECTS                       *
+ * =================================================== */
 
 /* beginseg
 	name "static"
@@ -47,62 +47,60 @@ endseg */
 	include "src/assets/textures/font.bin"
 endseg */
 
-// ------------------------------
+/* =================================================== *
+ *                        AUDIO                        *
+ * =================================================== */
 
-/* ========== AUDIO ========== */
-
-// Pointer to bank sounds
+// Music bank: "playstation"
+// =========================================
 beginseg
-	name "pbank_inst1"
+	name "bgmCtl_playstation"
 	flags RAW
-	include "src/assets/audio/banks/xp_remix.ptr"
+	include "src/assets/audio/banks/playstation.ctl"
 endseg
-
 beginseg
-	name "pbank_sfx1"
+	name "bgmTbl_playstation"
 	flags RAW
-	include "src/assets/audio/banks/sfx1.ptr"
+	include "src/assets/audio/banks/playstation.tbl"
 endseg
-
-// Banks containing sound data
-beginseg
-	name "wbank_inst1"
-	flags RAW
-	include "src/assets/audio/banks/xp_remix.wbk"
-endseg
+// =========================================
 
 beginseg
-	name "wbank_sfx1"
+	name "bgm_sce_logo_0"
 	flags RAW
-	include "src/assets/audio/banks/sfx1.wbk"
+	include "src/assets/audio/music/sce_logo_0.mid"
 endseg
 
-// Music score
+// Sound bank: "sample.sounds"
+// =========================================
 beginseg
-	name "bgm1"
+	name "sfx_sample"
 	flags RAW
-	include "src/assets/audio/music/xp_remix.bin"
+	include "src/assets/audio/sounds/sample.sounds"
 endseg
-
-// Sound effects list
 beginseg
-	name "sfx1"
+	name "sfxTbl_sample"
 	flags RAW
-	include "src/assets/audio/sfx/sfx1.bfx"
+	include "src/assets/audio/sounds/sample.sounds.tbl"
 endseg
+// =========================================
 
-// ------------------------------
+/* =================================================== *
+ *                         WAVE                        *
+ * =================================================== */
 
 beginwave
-	name "sample"
+	name "my_hb_game"
 	include "code"
 
-	include "pbank_inst1"
-	include "pbank_sfx1"
+	// Sound banks
+	include "sfx_sample"
+	include "sfxTbl_sample"
 
-	include "wbank_inst1"
-	include "wbank_sfx1"
+	// Instrument banks
+	include "bgmCtl_playstation"
+	include "bgmTbl_playstation"
 
-	include "bgm1"
-	include "sfx1"
+	// MIDIs
+	include "bgm_sce_logo_0"
 endwave

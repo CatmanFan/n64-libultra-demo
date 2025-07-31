@@ -1,15 +1,15 @@
-#ifndef __CONFIG_UNFLOADER_H__
-#define __CONFIG_UNFLOADER_H__
+#ifndef __CONFIG_UNF_H__
+#define __CONFIG_UNF_H__
 
 	/**
 	 * Debug mode parameters and macros (mainly used for enabling UNFLoader).
 	 */
-	// #define UNFLOADER
-	 
+	// #define UNF
+
 	#include "usb/debug.h"
 	#include "usb/usb.h"
 
-	#ifdef UNFLOADER
+	#if (defined(UNF) || defined(UNFLOADER))
 		#define debug_init		debug_initialize
 		#define debug_printf	debug_printf
 	#else

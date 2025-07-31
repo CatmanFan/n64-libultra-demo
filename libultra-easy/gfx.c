@@ -1,27 +1,19 @@
 #include <ultra64.h>
 #include <math.h>
-
-#include "config/global.h"
-#include "config/video.h"
-#include "config/usb.h"
-
-#include "libultra-easy/types.h"
-#include "libultra-easy/display.h"
-#include "libultra-easy/fault.h"
-#include "libultra-easy/gfx.h"
-#include "libultra-easy/rcp.h"
-#include "libultra-easy/scheduler.h"
-#include "libultra-easy/stack.h"
-#include "libultra-easy/time.h"
+#include "libultra-easy.h"
 
 /* =================================================== *
  *                       MACROS                        *
  * =================================================== */
 
 #ifdef VIDEO_32BIT
-	#define FB_DEPTH u32
+	#define FB_DEPTH		u32
+	#define ZBUFFER_ADDR	RAMBANK_8 + RAMBANK_SIZE - CFB_SIZE
+	#define CFB_SIZE		(SCREEN_W_HD*SCREEN_H_HD*4) // HD minimum size
 #else
-	#define FB_DEPTH u16
+	#define FB_DEPTH 		u16
+	#define ZBUFFER_ADDR	RAMBANK_4 + RAMBANK_SIZE - CFB_SIZE
+	#define CFB_SIZE		(SCREEN_W_HD*SCREEN_H_HD*2) // HD minimum size
 #endif
 
 #if (CFB_COUNT > 3 || CFB_COUNT <= 1)
@@ -29,7 +21,14 @@
 #endif
 
 #define MSG_SIZE (CFB_COUNT + 1)
-#define CFB_SIZE (SCREEN_W_HD*SCREEN_H_HD*sizeof(FB_DEPTH))
+
+/* =================================================== *
+ *                 FUNCTION PROTOTYPES                 *
+ * =================================================== */
+
+static void gfx_threadfunc(void *arg) __attribute__ ((noreturn));
+static void gfx_render(FrameBuffer *fb, void (*func)());
+static void gfx_create_fb(void *address);
 
 /* =================================================== *
  *                     PROTOTYPES                      *
@@ -46,6 +45,7 @@ static int msg_index;
 static FrameBuffer *fb_target;
 static FrameBuffer *fb_last;
 static FrameBuffer *fb_current;
+static int active_framebuffers;
 
 static OSThread		gfx_thread;
 static OSTimer      rcp_timer;
@@ -56,11 +56,11 @@ static OSMesgQueue	msg_queue_vsync;
 static OSMesg		msg_rdp;
 static OSMesgQueue	msg_queue_rdp;
 
-static void gfx_threadfunc(void *arg);
-static void gfx_render(FrameBuffer *fb, void (*func)());
-static void gfx_create_fb(int index, void *address);
-
 static Scheduler *scheduler;
+
+#define CFB1_ADDR		ZBUFFER_ADDR - (CFB_SIZE*1)
+#define CFB2_ADDR		ZBUFFER_ADDR - (CFB_SIZE*2)
+#define CFB3_ADDR		ZBUFFER_ADDR - (CFB_SIZE*3)
 
 /* =================================================== *
  *              GRAPHICS TASK FUNCTIONING              *
@@ -68,13 +68,16 @@ static Scheduler *scheduler;
 
 void init_gfx(Scheduler *sc)
 {
+	active_framebuffers = 0;
+
 	// Create framebuffers
-	zbuffer = (u16 *)(RAMBANK_8 + RAMBANK_SIZE - (CFB_SIZE*1));
-	gfx_create_fb(0, (FB_DEPTH*)(RAMBANK_8 + RAMBANK_SIZE - (CFB_SIZE*2)));
-	if (CFB_COUNT == 2)
-		gfx_create_fb(1, (FB_DEPTH*)(RAMBANK_8 + RAMBANK_SIZE - (CFB_SIZE*3)));
-	if (CFB_COUNT == 3)
-		gfx_create_fb(2, (FB_DEPTH*)(RAMBANK_8 + RAMBANK_SIZE - (CFB_SIZE*4)));
+	zbuffer = (u16 *)(ZBUFFER_ADDR);
+	if (CFB_COUNT >= 1) { gfx_create_fb((FB_DEPTH*)(CFB1_ADDR)); }
+	if (CFB_COUNT >= 2) { gfx_create_fb((FB_DEPTH*)(CFB2_ADDR)); }
+	if (CFB_COUNT >= 3) { gfx_create_fb((FB_DEPTH*)(CFB3_ADDR)); }
+
+	// Clear Z-buffer
+	bzero(zbuffer, CFB_SIZE);
 
 	// Set scheduler
 	scheduler = sc;
@@ -84,12 +87,48 @@ void init_gfx(Scheduler *sc)
 	osStartThread(&gfx_thread);
 }
 
+void gfx_close()
+{
+	osStopTimer(&rcp_timer);
+	osStopThread(&gfx_thread);
+}
+
+/**
+ * @brief Self-destruct function, triggered if the scheduler has detected a fault.
+ *
+ * The main purpose of this is to avoid issues with any new frames being sent and
+ * subsequently overwriting that currently being used by the fault screen.
+ *
+ * This is especially useful during audio thread testing, and will be removed or
+ * at least reduced once audio is eventually in a working state.
+ */
+/*static bool gfx_fault_handler()
+{
+	if (scheduler->crash)
+	{
+		int i;
+		osYieldThread();
+		gfx_close();
+		for (i = 0; i < MSG_SIZE; i++)
+		{
+			msg_buffer[i].func = NULL;
+			msg_buffer[i].usecpu = TRUE;
+			msg_buffer[i].swapbuffer = FALSE;
+			msg_buffer[i].used = TRUE;
+		}
+		for (;;) {;}
+		return TRUE;
+	}
+
+	return FALSE;
+}*/
+
 static void gfx_threadfunc(void *arg)
 {
 	fb_target = NULL;
 	fb_last = NULL;
 
-	osCreateMesgQueue(&msg_queue_gfx, msg_gfx, CFB_COUNT);
+	osCreateMesgQueue(&msg_queue_gfx, msg_gfx, active_framebuffers);
 	osCreateMesgQueue(&msg_queue_vsync, &msg_vsync, 1);
 	osCreateMesgQueue(&msg_queue_rdp, &msg_rdp, 1);
 	osSetEventMesg(OS_EVENT_DP, &msg_queue_rdp, NULL);
@@ -107,14 +146,15 @@ static void gfx_threadfunc(void *arg)
 		if (scheduler->is_changing_res)
 		{
 			debug_printf("[GFX] Waiting until display resolution change is completed\n");
-			while (scheduler->is_changing_res) { ; }
+			while (scheduler->is_changing_res) {
+		}
 		}
 
 		// We received a message, find an available framebuffer if we don't have one yet
 		if (fb_target == NULL)
 		{
 			int i = 0;
-			for (i = 0; i < CFB_COUNT; i++)
+			for (i = 0; i < active_framebuffers; i++)
 			{
 				FrameBuffer* fb_ptr = &framebuffers[i];
 				if (fb_ptr->status == FB_FREE || (fb_ptr->status == FB_READY && fb_ptr != fb_last))
@@ -135,7 +175,7 @@ static void gfx_threadfunc(void *arg)
 		}
 
 		// Generate the display list for the scene
-		// l_msgp->used = TRUE;
+		l_msgp->used = TRUE;
 		if (!l_msgp->usecpu)
 		{
 			gfx_render(fb_target, l_msgp->func);
@@ -154,7 +194,9 @@ static void gfx_threadfunc(void *arg)
 		{
 			debug_printf("[GFX] Sending render task to CPU\n");
 			if (l_msgp->func != NULL)
+			{
 				l_msgp->func();
+			}
 			osWritebackDCacheAll();
 		}
 
@@ -167,7 +209,7 @@ static void gfx_threadfunc(void *arg)
 			fb_last = fb_target;
 			fb_target = NULL;
 		}
-		// l_msgp->used = FALSE;
+		l_msgp->used = FALSE;
 	}
 }
 
@@ -183,7 +225,9 @@ static void gfx_render(FrameBuffer *fb, void (*func)())
 	// Build the display list
 	rcp_start(&l_task);
 	if (l_task.func != NULL)
+	{
 		l_task.func();
+	}
 	rcp_finish(&l_task);
 
 	// If the framebuffer is still in use by the VI (the switch takes time), then wait for it to become available
@@ -201,12 +245,12 @@ static void gfx_render(FrameBuffer *fb, void (*func)())
 		osSetTimer(&rcp_timer, OS_USEC_TO_CYCLES(SEC_TO_USEC(3)), 0, &scheduler->queue, (OSMesg)SC_MSG_RCPDEAD);
 	#endif
 	debug_printf("[GFX] Beginning render task at framebuffer %d\n", fb->id);
-	osSpTaskStart(l_task.task);
+	osSpTaskStart(scheduler->task_gfx);
 }
 
 void gfx_request_render(void (*func)(), bool usecpu, bool swapbuffer)
 {
-	/* if (MSG_SIZE > 1)
+	if (MSG_SIZE > 1)
 	{
 		int starting_index = -1;
 		while (msg_buffer[msg_index].used == TRUE)
@@ -228,7 +272,7 @@ void gfx_request_render(void (*func)(), bool usecpu, bool swapbuffer)
 	{
 		debug_printf("[GFX] Render task request full, skipping...\n");
 		return;
-	} */
+	}
 
 	if (scheduler->is_changing_res == FALSE)
 	{
@@ -239,17 +283,23 @@ void gfx_request_render(void (*func)(), bool usecpu, bool swapbuffer)
 
 		debug_printf("[GFX] Requesting render task at slot %d\n", msg_index);
 		osSendMesg(&msg_queue_gfx, (OSMesg)l_msgp, OS_MESG_BLOCK);
-		msg_index++;
-		if (msg_index >= MSG_SIZE) { msg_index = 0; }
+
+		msg_index = (msg_index + 1) % MSG_SIZE;
 	}
 }
 
-static void gfx_create_fb(int index, void *address)
+static void gfx_create_fb(void *address)
 {
-	framebuffers[index].id = index;
-	framebuffers[index].address = address;
-	framebuffers[index].dl = glist[index];
-	framebuffers[index].status = FB_FREE;
+	// Clear the buffer
+	bzero(address, CFB_SIZE);
+
+	framebuffers[active_framebuffers].id = active_framebuffers;
+	framebuffers[active_framebuffers].address = address;
+	framebuffers[active_framebuffers].size = CFB_SIZE;
+	framebuffers[active_framebuffers].dl = glist[active_framebuffers];
+	framebuffers[active_framebuffers].status = FB_FREE;
+
+	active_framebuffers++;
 }
 
 
@@ -262,6 +312,11 @@ bool is_framebuffer_ready()
 	return fb_last != NULL;
 }
 
+int num_active_framebuffers()
+{
+	return active_framebuffers;
+}
+
 FrameBuffer* return_ready_framebuffer()
 {
 	int i;
@@ -272,7 +327,7 @@ FrameBuffer* return_ready_framebuffer()
 
 	// See if we have another framebuffer marked as ready
 	fb_last = NULL;
-	for (i = 0; i < CFB_COUNT; i++)
+	for (i = 0; i < active_framebuffers; i++)
 	{
 		if (framebuffers[i].status == FB_READY)
 		{
@@ -283,9 +338,4 @@ FrameBuffer* return_ready_framebuffer()
 
 	// Return the consumed framebuffer
 	return fb_cons;
-}
-
-FrameBuffer* current_framebuffer()
-{
-	return fb_current != NULL ? fb_current : fb_last;
 }

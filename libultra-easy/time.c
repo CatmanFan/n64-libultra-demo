@@ -21,10 +21,14 @@
 #define DELTA (1.0F / (f64)TICKRATE)
 
 // OSTime variables
+static OSTime os_delta_time;
+static OSTime os_now_system_time;
 static OSTime os_prev_time;
 static OSTime os_now_time;
 static OSTime os_diff_time;
-static OSTime os_delta_time;
+static OSTime os_last_reset;
+
+static int current_frame;
 
 static void wait_cycles_s(u64 cycles, bool use_debug);
 
@@ -61,7 +65,14 @@ int fps()
 
 void time_init()
 {
-	time_reset();
+	os_now_system_time = 0;
+
+	os_prev_time = 0;
+	os_now_time = 0;
+	os_diff_time = 0;
+	os_last_reset = 0;
+
+	current_frame = 0;
 	os_delta_time = OS_USEC_TO_CYCLES(SEC_TO_USEC(DELTA));
 
 	s_fps = 0;
@@ -71,21 +82,23 @@ void time_init()
 
 void time_reset()
 {
+	os_last_reset = osGetTime();
 	os_prev_time = 0;
 	os_now_time = 0;
 	os_diff_time = 0;
-	osSetTime(0);
 }
 
 void time_update()
 {
-    os_now_time = osGetTime();
-	os_diff_time = os_now_time - os_prev_time;
-	os_prev_time = os_now_time;
+    os_now_system_time = osGetTime();
+    os_now_time = os_now_system_time - os_last_reset;
+	os_diff_time = os_now_system_time - os_prev_time;
+	os_prev_time = os_now_system_time;
 
 	fps_update();
 
 	wait_cycles_s(os_delta_time, FALSE);
+	current_frame++;
 }
 
 /* =================================================== *
@@ -112,9 +125,7 @@ void wait_cycles(u64 cycles)
 
 static void wait_cycles_s(u64 cycles, bool use_debug)
 {
-	OSTimer timer;
-	OSMesg timer_buffer;
-	OSMesgQueue timer_queue;
+	bool use_timer = TRUE;
 
 	if (!debug && use_debug)
 	{
@@ -126,22 +137,33 @@ static void wait_cycles_s(u64 cycles, bool use_debug)
 		debug = TRUE;
 	}
 
-    osCreateMesgQueue(&timer_queue, &timer_buffer, 1);
-    osSetTimer(&timer, (OSTime)cycles, 0, &timer_queue, 0);
-    (void) osRecvMesg(&timer_queue, NULL, OS_MESG_BLOCK);
+	if (use_timer)
+	{
+		OSTimer timer;
+		OSMesg timer_buffer;
+		OSMesgQueue timer_queue;
 
-	// Temporary halt
-	/* while (osGetTime() < wait + cycles)
-		{ ; } */
+		osCreateMesgQueue(&timer_queue, &timer_buffer, 1);
+		osSetTimer(&timer, (OSTime)cycles, 0, &timer_queue, 0);
+		(void) osRecvMesg(&timer_queue, NULL, OS_MESG_BLOCK);
+	}
+	else
+	{
+		OSTime marker = osGetTime();
+
+		// Temporary halt
+		while (osGetTime() < marker + cycles)
+			{ ; }
+	}
 
 	if (use_debug)
 		debug = FALSE;
 }
 
-void lag()
+void lag(int count)
 {
 	int lag_value;
-	for (lag_value = 0; lag_value < 700000; lag_value++)
+	for (lag_value = 0; lag_value < count * 100000; lag_value++)
 		{ ; }
 }
 
@@ -152,7 +174,22 @@ f64 time_current()
 	return USEC_TO_SEC(OS_CYCLES_TO_USEC(os_now_time));
 }
 
+f64 time_system()
+{
+	return USEC_TO_SEC(OS_CYCLES_TO_USEC(os_now_system_time));
+}
+
 f64 time_delta()
 {
 	return USEC_TO_SEC(OS_CYCLES_TO_USEC(os_delta_time));
+}
+
+int time_framerate()
+{
+	return FRAMERATE;
+}
+
+int time_current_frame()
+{
+	return current_frame;
 }

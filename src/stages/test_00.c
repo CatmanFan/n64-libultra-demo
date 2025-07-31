@@ -6,9 +6,10 @@
 
 /* === Default libraries === */
 #include "libultra-easy/types.h"
-// #include "libultra-easy/audio.h"
+#include "libultra-easy/audio.h"
 #include "libultra-easy/console.h"
 #include "libultra-easy/controller.h"
+#include "libultra-easy/display.h"
 #include "libultra-easy/fault.h"
 #include "libultra-easy/fs.h"
 #include "libultra-easy/rcp.h"
@@ -19,32 +20,30 @@
 /* === Custom libraries === */
 #include "strings.h"
 
-/* =============== ASSETS =============== */
-
+/* [ASSETS]
+========================================= */
 extern Gfx globe_mesh[];
 #include "assets/models/n64_logo.h"
 
-/* ============== SEGMENTS ============== */
+/* [SEGMENTS]
+========================================= */
 
-ROM_SEGMENT(pbank_inst1)
-ROM_SEGMENT(wbank_inst1)
-ROM_SEGMENT(pbank_sfx1)
-ROM_SEGMENT(wbank_sfx1)
-ROM_SEGMENT(bgm1)
-ROM_SEGMENT(sfx1)
-
-/* ========== STATIC VARIABLES ========== */
-
+/* [VARIABLES]
+========================================= */
 // Camera
 static float fov;
 
 // Object
 static float scale;
-static int obj_type;
-static int prev_obj_type;
+// static int obj_type;
+// static int prev_obj_type;
 
-/* ============= 3D OBJECTS ============= */
+static f64 msg_time_marker;
+static f64 msg_timer;
+static bool msg_alt;
 
+/* [3D MODELS]
+========================================= */
 static vec3 camera;
 static Lights3 light = gdSPDefLights3
 (
@@ -60,17 +59,14 @@ static Lights3 light = gdSPDefLights3
 	0, 127, 80		// Direction toward diffuse light #3
 );
 
-static simpleObj obj = { .dl = n64_logo_logo_mesh };
+static simpleObj obj = { .dl = n64_logo_logo_mesh, .scale = 1.0 };
 static simpleObj globe = { .dl = globe_mesh, .scale = 0.333 };
 
-/* ========== STATIC FUNCTIONS ========== */
+/* [STATIC FUNCTIONS]
+========================================= */
 
-static void die()
-{
-	crash();
-}
-
-/* ========== GLOBAL FUNCTIONS ========== */
+/* [MAIN FUNCTIONS]
+========================================= */
 
 /* ==============================
  * Initializes stage.
@@ -80,19 +76,25 @@ void test_00_init()
 	fov = 40;
 	scale = 1.0;
 
-	vec3_set(camera, 0, 600, 1600);
+	vec3_set(camera, 0, 10, 250);
 
-	obj_type = 0;
+	// obj_type = 0;
 
+	reset_controller();
+
+	console_clear();
+
+	sound_set_bank("sample");
 	// The sound effects bank is now the default bank
 
 	// Now that I played the song, the sound effects bank has been reverted back to default
 	// (which in this case is the sound effects bank). So now I can play a sound without
 	// the need for MusPtrBankSetSingle.
 
-	reset_controller();
-
-	console_clear();
+	time_reset();
+	msg_timer = 5.0;
+	msg_time_marker = 5.0;
+	msg_alt = FALSE;
 }
 
 /* ==============================
@@ -108,15 +110,19 @@ void test_00_update()
 	else if (controller[0].button == B_BUTTON)
 		camera.z+=8;
 
-	if (controller[0].button == U_CBUTTONS)
+	/*if (controller[0].button == U_CBUTTONS)
 		fov+=0.2;
 	else if (controller[0].button == D_CBUTTONS)
-		fov-=0.2;
+		fov-=0.2;*/
 
 	if (controller[0].button == L_CBUTTONS)
 		globe.pos.z-=8;
 	else if (controller[0].button == R_CBUTTONS)
 		globe.pos.z+=8;
+	if (controller[0].button == U_CBUTTONS)
+		globe.pos.y+=8;
+	else if (controller[0].button == D_CBUTTONS)
+		globe.pos.y-=8;
 
 	if (controller[0].button == U_JPAD)
 		obj.rot.x-=2;
@@ -127,22 +133,36 @@ void test_00_update()
 	else if (controller[0].button == R_JPAD)
 		obj.rot.y+=2;
 
-	if (controller[0].button == L_TRIG)
+	/*if (controller[0].button == L_TRIG)
 		obj_type -= 1;
 	else if (controller[0].button == R_TRIG)
 		obj_type += 1;
-
 	if (obj_type > 1) obj_type = 0;
 	if (obj_type < 0) obj_type = 1;
+	prev_obj_type = obj_type;*/
 
 	if (controller[0].button == START_BUTTON)
-		die();
+	{
+		sound_set_bank("sample");
+		sound_play(0);
+		// crash();
+	}
 
 	// ==================================================
 
-	prev_obj_type = obj_type;
-
 	globe.rot.y+=1;
+
+	msg_timer = msg_time_marker - time_current();
+
+	if (msg_timer < 0.0)
+	{
+		msg_alt = !msg_alt;
+		while (msg_timer < 0.0)
+		{
+			msg_time_marker += 10.0;
+			msg_timer += 10.0;
+		}
+	}
 }
 
 /* ==============================
@@ -151,7 +171,8 @@ void test_00_update()
 void test_00_render()
 {
 	clear_zfb();
-	clear_cfb(72, 72, 72);
+	clear_cfb(52, 52, 52);
+	draw_gradient(0, display_height() * 0.666, display_width(), display_height() * 0.333, RGBA32(82,82,82,0), RGBA32(92,92,92,255), FALSE);
 
 	// ==========================
 	// 3D rendering
@@ -167,12 +188,20 @@ void test_00_render()
 	// 2D rendering
 	// ==========================
 	console_clear();
-	console_puts(str_03, 'X', camera.x);
-	console_puts(str_03, 'Y', camera.y);
-	console_puts(str_03, 'Z', camera.z);
-	console_puts(str_04, fov);
-	console_puts(str_05, 'X', obj.rot.x);
-	console_puts(str_05, 'Y', obj.rot.y);
-	console_puts(str_05, 'Z', obj.rot.z);
+	console_puts("FPS: %d\n", fps());
+	if (msg_alt)
+	{
+		console_puts(strings[8]);
+	}
+	else
+	{
+		console_puts(strings[5], 'X', obj.rot.x);
+		console_puts(strings[5], 'Y', obj.rot.y);
+		// console_puts(strings[5], 'Z', obj.rot.z);
+		console_puts(strings[3], 'X', camera.x);
+		console_puts(strings[3], 'Y', camera.y);
+		console_puts(strings[3], 'Z', camera.z);
+		// console_puts(strings[4], fov);
+	}
 	console_draw_dl();
 }

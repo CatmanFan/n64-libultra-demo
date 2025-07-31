@@ -1,87 +1,107 @@
 #include <ultra64.h>
-#include "config/global.h"
+#include "libultra-easy.h"
 
-static OSMesg msg_pi[NUM_PI_MSGS];
-static OSMesg msg_dma;
-static OSMesgQueue msgQ_pi, msgQ_dma;
-static OSIoMesg msgIo_dma;
+/* =================================================== *
+ *                       MACROS                        *
+ * =================================================== */
 
-static OSPiHandle* rom_handle;
+#define DMA_MSG_COUNT	200
+
+/* =================================================== *
+ *                     PROTOTYPES                      *
+ * =================================================== */
+
+static OSMesg		msg_pi[DMA_MSG_COUNT];
+static OSMesgQueue	msg_queue_pi;
+static OSMesg		msg_dma;
+static OSIoMesg		msg_io_dma;
+static OSMesgQueue	msg_queue_dma;
+
+static bool			rom_reader_initialized = FALSE;
+
+/*static*/ OSPiHandle* rom_handle;
+
+/* =================================================== *
+ *           GLOBAL FILEREADER/DMA FUNCTIONS           *
+ * =================================================== */
 
 void init_reader()
 {
-	// Init PI Messager for access to ROM
-	osCreatePiManager((OSPri) OS_PRIORITY_PIMGR, &msgQ_pi, msg_pi, NUM_PI_MSGS);
-	rom_handle = osCartRomInit();
+	if (!rom_reader_initialized)
+	{
+		// Init PI Messager for access to ROM
+		rom_handle = osCartRomInit();
+		osCreatePiManager((OSPri) OS_PRIORITY_PIMGR, &msg_queue_pi, msg_pi, DMA_MSG_COUNT);
 
-	// Create msg queue for DMA
-	osCreateMesgQueue(&msgQ_dma, &msg_dma, 1);
+		// Create msg queue for DMA
+		osCreateMesgQueue(&msg_queue_dma, &msg_dma, 1);
+
+		rom_reader_initialized = TRUE;
+	}
+}
+
+void load_from_rom(void *ram_addr, void *rom_addr, u32 size)
+{
+	u32 src = (u32)rom_addr;
+    osWritebackDCache(ram_addr, size);
+    osInvalDCache(ram_addr, size);
+
+    msg_io_dma.hdr.pri      = OS_MESG_PRI_NORMAL;
+    msg_io_dma.hdr.retQueue = &msg_queue_dma;
+
+    msg_io_dma.dramAddr     = ram_addr;
+    msg_io_dma.devAddr      = src;
+    msg_io_dma.size         = size;
+
+    osEPiStartDma(rom_handle, &msg_io_dma, OS_READ);
+    osRecvMesg(&msg_queue_dma, NULL, OS_MESG_BLOCK);
+    osInvalDCache(ram_addr, size);
+}
+
+u8 get_rom_region()
+{
+	u8 rom_header[16];
+	u8 *rom_header_ptr = rom_header;
+	load_from_rom(rom_header_ptr, (u8 *)0x20, 16);
+	return rom_header_ptr[0x0E];
 }
 
 void load_segment(char *offset, char *start, char *end)
 {
-	// Static
-	/* staticSegment = _zbufSegmentBssEnd;
-	msgIo_dma.hdr.pri      = OS_MESG_PRI_NORMAL;
-	msgIo_dma.hdr.retQueue = &msgQ_dma;
-	msgIo_dma.dramAddr     = staticSegment;
-	msgIo_dma.devAddr      = (u32)_staticSegmentRomStart;
-	msgIo_dma.size         = ;
-	osEPiStartDma(rom_handle, &msgIo_dma, OS_READ); */
-
-	// Texture
-	/* textureSegment = msgIo_dma.dramAddr + msgIo_dma.size;
-	msgIo_dma.hdr.pri      = OS_MESG_PRI_NORMAL;
-	msgIo_dma.hdr.retQueue = &msgQ_dma;
-	msgIo_dma.dramAddr     = textureSegment;
-	msgIo_dma.devAddr      = (u32)_textureSegmentRomStart;
-	msgIo_dma.size         = (u32)_textureSegmentRomEnd-(u32)_textureSegmentRomStart;
-	osEPiStartDma(rom_handle, &msgIo_dma, OS_READ); */
+	// Initialize Pi Manager/DMA queue if not done yet
+	if (!rom_reader_initialized) { init_reader(); }
 
 	// Determine parameters of where segment is stored and size
-	msgIo_dma.hdr.pri      = OS_MESG_PRI_NORMAL;
-	msgIo_dma.hdr.retQueue = &msgQ_dma;
-	msgIo_dma.dramAddr     = offset;
-	msgIo_dma.devAddr      = (u32)start;
-	msgIo_dma.size         = (u32)end-(u32)start;
+	msg_io_dma.hdr.pri      = OS_MESG_PRI_NORMAL;
+	msg_io_dma.hdr.retQueue = &msg_queue_dma;
+	msg_io_dma.dramAddr     = offset;
+	msg_io_dma.devAddr      = (u32)start;
+	msg_io_dma.size         = (u32)end-(u32)start;
 
-	// Start reading from ROM
-	osEPiStartDma(rom_handle, &msgIo_dma, OS_READ);
-}
+	// Start DMA reader and wait for message
+	osEPiStartDma(rom_handle, &msg_io_dma, OS_READ);
+	(void) osRecvMesg(&msg_queue_dma, NULL, OS_MESG_BLOCK);
 
-void load_binary(void *rom_address, void *ram_buffer, int size)
-{
-	u32 src = (u32)rom_address;
-	unsigned char *dest = ram_buffer;
-	u32 data_read;
+	/* EXAMPLE SEGMENTS:
 
-	msgIo_dma.hdr.pri      = OS_MESG_PRI_NORMAL;
-	msgIo_dma.hdr.retQueue = &msgQ_dma;
+	// Static:
+	staticSegment = _zbufSegmentBssEnd;
+	msg_io_dma.hdr.pri      = OS_MESG_PRI_NORMAL;
+	msg_io_dma.hdr.retQueue = &msg_queue_dma;
+	msg_io_dma.dramAddr     = staticSegment;
+	msg_io_dma.devAddr      = (u32)SEGMENT_START(static);
+	msg_io_dma.size         = (u32)SEGMENT_END(static) - (u32)SEGMENT_START(static);
+	osEPiStartDma(rom_handle, &msg_io_dma, OS_READ);
 
-	// Writeback and invalidate data cache
-	osWritebackDCache(dest, size);
-	osInvalDCache(dest, size);
-
-	while (size)
-	{
-		// Cap to DMA block size if needed
-		u32 max_size = 16384;
-		data_read = size > max_size ? max_size : size;
-
-		// Determine parameters of where binary is stored and size
-		msgIo_dma.dramAddr = dest;
-		msgIo_dma.devAddr  = src;
-		msgIo_dma.size     = data_read;
-
-		// Start reading from ROM and wait for message
-		osEPiStartDma(rom_handle, &msgIo_dma, OS_READ);
-		osRecvMesg(&msgQ_dma, NULL, OS_MESG_BLOCK);
-
-		// Increment pointers for next ROM read
-		src += data_read;
-		dest += data_read;
-		size -= data_read;
-	}
+	// Texture:
+	textureSegment = msg_io_dma.dramAddr + msg_io_dma.size;
+	msg_io_dma.hdr.pri      = OS_MESG_PRI_NORMAL;
+	msg_io_dma.hdr.retQueue = &msg_queue_dma;
+	msg_io_dma.dramAddr     = textureSegment;
+	msg_io_dma.devAddr      = (u32)SEGMENT_START(texture);
+	msg_io_dma.size         = (u32)SEGMENT_END(texture) - (u32)SEGMENT_START(texture);
+	osEPiStartDma(rom_handle, &msg_io_dma, OS_READ);
+	*/
 }
 
 void load_all_segments()
@@ -99,22 +119,19 @@ void load_all_segments()
 	// determining its end, and they must share the SAME
 	// name as the segment itself in 'spec'!
 
-	// extern char _staticSegmentRomStart[];
-	// extern char _staticSegmentRomEnd[];
+	// SEGMENT_DECLARE(static);
+	// SEGMENT_DECLARE(texture);
 
-	// extern char _textureSegmentRomStart[];
-	// extern char _textureSegmentRomEnd[];
-
-	// u32 size = 0;
+	// u32 location = (u32)_codeSegmentEnd;
 
 	// -----------------------------------------------------
 
 	// 'texture'
 	/*read_segment
 	(
-		_codeSegmentEnd + size,
-		_textureSegmentRomStart,
-		_textureSegmentRomEnd
+		location,
+		SEGMENT_START(texture),
+		SEGMENT_END(texture)
 	);
-	size += ((u32)_textureSegmentRomEnd-(u32)_textureSegmentRomStart);*/
+	location += ((u32)(SEGMENT_SIZE(texture)));*/
 }

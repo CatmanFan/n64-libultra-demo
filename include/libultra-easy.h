@@ -14,6 +14,7 @@
 	#include "libultra-easy/types.h"
 
 	/* General */
+	#include "libultra-easy/audio.h"
 	#include "libultra-easy/console.h"
 	#include "libultra-easy/controller.h"
 	#include "libultra-easy/display.h"
@@ -33,8 +34,7 @@
 
 	/* User-defined configuration */
 	#include "config/global.h"
-	#include "config/audio.h"
 	#include "config/video.h"
-	#include "config/usb.h"
+	#include "config/unf.h"
 
 #endif
