@@ -18,7 +18,6 @@
 /* ============= PROTOTYPES ============= */
 
 extern int language;
-extern void *load_glyph(Font *font, int glyph);
 
 /* ============= FUNCTIONS ============== */
 
@@ -104,53 +103,126 @@ void console_puts(const char *txt, ...)
 
 /* =========== DRAWING (RAW) ============ */
 
-void clear_screen_raw()
+void clear_screen_raw(FrameBuffer *framebuffer)
 {
-	int fb;
-
-	for (fb = 0; fb < CFB_COUNT; fb++)
+	if (framebuffer == NULL)
 	{
-		bzero(framebuffers[fb].address, display_width() * (display_height() * 2));
+		int fb;
+
+		for (fb = 0; fb < CFB_COUNT; fb++)
+		{
+			bzero(framebuffers[fb].address, framebuffers[fb].size);
+		}
+	}
+
+	else
+	{
+		bzero(framebuffer->address, framebuffer->size);
 	}
 }
 
-void tint_screen_raw()
+void tint_screen_raw(FrameBuffer *framebuffer)
 {
-	int i, fb;
-
-	for (fb = 0; fb < CFB_COUNT; fb++)
+	if (framebuffer == NULL)
 	{
+		int i, fb;
+
+		for (fb = 0; fb < CFB_COUNT; fb++)
+		{
+			// Set beginning CFB pointer
+			#ifdef VIDEO_32BIT
+			u32 *ptr = (u32 *)
+			#else
+			u16 *ptr = (u16 *) // "u32 *ptr = (u32 *)" increases the spacing of each pixel, so not recommended
+			#endif
+			framebuffers[fb].address;
+
+			// Write color directly
+			for (i = 0; i < framebuffers[fb].size; i++)
+			{
+			#ifdef VIDEO_32BIT
+				*ptr = 0x00000000;
+			#else
+				*ptr = (((*ptr & 0xe738) >> 2) | 1);
+			#endif
+				ptr++;
+			}
+		}
+	}
+
+	else
+	{
+		int i;
+
 		// Set beginning CFB pointer
 		#ifdef VIDEO_32BIT
 		u32 *ptr = (u32 *)
 		#else
 		u16 *ptr = (u16 *) // "u32 *ptr = (u32 *)" increases the spacing of each pixel, so not recommended
 		#endif
-		framebuffers[fb].address;
+		framebuffer->address;
 
 		// Write color directly
 		for (i = 0; i < display_width() * display_height(); i++)
 		{
-		#ifdef VIDEO_32BIT
+			#ifdef VIDEO_32BIT
 			*ptr = 0x00000000;
-		#else
+			#else
 			*ptr = (((*ptr & 0xe738) >> 2) | 1);
-		#endif
+			#endif
 			ptr++;
 		}
 	}
 }
 
-static void draw_glyph_raw(Font *font, int g, int x, int y)
+static void draw_glyph_raw(Font *font, int g, int x, int y, FrameBuffer *framebuffer)
 {
 	// Set font helper variables
 	int w = g < 0 ? 0                           : font->glyphs[g].width;
 	int h = g < 0 ? font->glyphs[0].height      : font->glyphs[g].height;
 	int i = g < 0 ? font->glyphs[0].glyph_index : font->glyphs[g].glyph_index;
 	// int scale = 1;
-	int fb;
 
-	for (fb = 0; fb < CFB_COUNT; fb++)
+	if (framebuffer == NULL)
+	{
+		int fb;
+
+		for (fb = 0; fb < CFB_COUNT; fb++)
+		{
+			// Set pointer X,Y coordinates
+			int ptr_x, ptr_y;
+
+			// Set beginning CFB pointer
+			#ifdef VIDEO_32BIT
+			u32 black = 0x00000000;
+			u32 white = 0xFFFFFFFF;
+			u32 *ptr = (u32 *)
+			#else
+			u16 black = 0x0000; // (((*ptr & 0xe738) >> 2) | 1)
+			u16 white = 0xFFFF;
+			u16 *ptr = (u16 *) // "u32 *ptr = (u32 *)" increases the spacing of each pixel, so not recommended
+			#endif
+			framebuffers[fb].address + (y * display_width()) + x;
+
+			// Write color directly
+			for (ptr_y = y; ptr_y < y + h; ptr_y++)
+			{
+				for (ptr_x = x; ptr_x < x + w; ptr_x++)
+				{
+					int chr_x = ptr_x - x;
+					int chr_y = ptr_y - y;
+					u8 *chr = (u8 *)(font->bmp + i * (w * h));
+
+					*ptr = i >= 0 && chr[chr_x + (w * chr_y)] == 0x01
+						 ? white : black;
+					ptr++;
+				}
+
+				ptr += display_width() - w;
+			}
+		}
+	}
+	else
 	{
 		// Set pointer X,Y coordinates
 		int ptr_x, ptr_y;
@@ -165,7 +237,7 @@ static void draw_glyph_raw(Font *font, int g, int x, int y)
 		u16 white = 0xFFFF;
 		u16 *ptr = (u16 *) // "u32 *ptr = (u32 *)" increases the spacing of each pixel, so not recommended
 		#endif
-		framebuffers[fb].address + (y * display_width()) + x;
+		framebuffer->address + (y * display_width()) + x;
 
 		// Write color directly
 		for (ptr_y = y; ptr_y < y + h; ptr_y++)
@@ -174,7 +246,7 @@ static void draw_glyph_raw(Font *font, int g, int x, int y)
 			{
 				int chr_x = ptr_x - x;
 				int chr_y = ptr_y - y;
-				u8 *chr = (u8 *)(load_glyph(font, i));
+				u8 *chr = (u8 *)(font->bmp + i * (w * h));
 
 				*ptr = i >= 0 && chr[chr_x + (w * chr_y)] == 0x01
 					 ? white : black;
@@ -186,7 +258,7 @@ static void draw_glyph_raw(Font *font, int g, int x, int y)
 	}
 }
 
-static void draw_text_raw(int x, int y, const char *txt, Font font)
+static void draw_text_raw(int x, int y, const char *txt, Font font, FrameBuffer *fb)
 {
 	int text_x = x * font.glyphs[0].width, text_y = y * font.glyphs[0].height;
 	int i = 0;
@@ -219,7 +291,7 @@ static void draw_text_raw(int x, int y, const char *txt, Font font)
 			g = language == 6 ? -1 : 0;
 
 			draw:
-			draw_glyph_raw(&font, g, x, y);
+			draw_glyph_raw(&font, g, x, y, fb);
 
 			if (found) x += font.glyphs[g].width;
 			if (x > display_width() - text_x) { x = text_x; y += font.glyphs[g].height; }
@@ -235,7 +307,7 @@ static void draw_text_dl(int x, int y, int scale, const char *txt, Font *font)
 	extern void draw_text(const char *txt, Font *font, int x, int y, int bounds_w, int bounds_h, int align, int line_spacing, bool line_wrap, bool transparent);
 	x *= font->glyphs[0].width;
 	y *= font->glyphs[0].height;
-	draw_text(txt, font, x, y, 0, 0, 0, 0, TRUE, FALSE);
+	draw_text(txt, font, x, y, display_width() - x * 2, display_height() - y * 2, 0, 0, TRUE, FALSE);
 }
 
 /* ============== GLOBAL =============== */
@@ -253,13 +325,14 @@ void console_draw_dl()
 	);
 }
 
-void console_draw_raw()
+void console_draw_raw(FrameBuffer *fb)
 {
 	draw_text_raw
 	(
 		language == 6 ? 1 : 2,
 		1,
 		buf,
-		language == 6 ? rm2003_ja : terminus
+		language == 6 ? rm2003_ja : terminus,
+		fb
 	);
 }

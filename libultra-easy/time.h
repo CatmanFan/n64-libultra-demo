@@ -44,7 +44,19 @@ void time_reset();
  */
 f64 time_current();
 
+f64 time_system();
+
 f64 time_delta();
+
+/**
+ * @brief Returns the global framerate setting.
+ * (This can be either 60, 50, 30 or 25 depending on the TV and game configuration.)
+ * 
+ * @return A static framerate value
+ */
+int time_framerate();
+
+int time_current_frame();
 
 int fps();
 
@@ -67,6 +79,6 @@ void wait_cycles(u64 cycles);
 /**
  * @brief Test lag function.
  */
-void lag();
+void lag(int count);
 
 #endif

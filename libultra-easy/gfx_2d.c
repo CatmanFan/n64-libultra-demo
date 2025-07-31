@@ -3,15 +3,7 @@
 #include <math.h>
 #include <PR/gs2dex.h>
 #include <PR/gu.h>
-
-#include "config/global.h"
-#include "config/video.h"
-#include "config/usb.h"
-
-#include "libultra-easy/types.h"
-#include "libultra-easy/fault.h"
-#include "libultra-easy/fs.h"
-#include "libultra-easy/rcp.h"
+#include "libultra-easy.h"
 
 /* =========== STATIC HELPERS =========== */
 

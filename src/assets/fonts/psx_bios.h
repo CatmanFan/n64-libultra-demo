@@ -13,7 +13,7 @@
 		.multi_bmp		= FALSE,
 		.tlut			= psx_bios_font_tlut,
 		.glyphs			= psx_bios_font_glyphs,
-		.glyph_count	= 15
+		.glyph_count	= 100
 	};
 
 #endif

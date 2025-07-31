@@ -19,7 +19,7 @@ typedef enum joypad_button
 	Z = Z_TRIG,
 } Button;
 
-#define RGBA(r,g,b,a) ((r << 24) | (g << 16) | (b << 8) | a)
+#define RGBA32(r,g,b,a) ((r << 24) | (g << 16) | (b << 8) | a)
 
 /* ================================= */
 /*              Helpers              */
@@ -30,7 +30,9 @@ typedef int bool;
 #define TRUE 1
 #define FALSE 0
 
-#define round(n) (n < 0.0F ? ((int)((f64)n - 0.5F)) : ((int)((f64)n + 0.5F)))
+#define round(n) (n < 0.0F ? ((s32)((f64)n - 0.5F)) : ((s32)((f64)n + 0.5F)))
+
+#define array_size(x) (sizeof(x) / sizeof(*(x)))
 
 /* ================================= */
 /*            3D Graphics            */

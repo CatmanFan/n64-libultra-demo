@@ -7,8 +7,8 @@
 /* ============= PROTOTYPES ============= */
 
 // Thread functions
-static void idle(void *);
-static void main(void *);
+static void idle(void *) __attribute__ ((noreturn));
+static void main(void *) __attribute__ ((noreturn));
 
 OSThread idle_thread;
 OSThread main_thread;
@@ -21,7 +21,7 @@ Scheduler* scheduler;
 void boot(void* arg)
 {
 	osInitialize();
-	osAiSetFrequency(AUDIO_BITRATE);
+	// osAiSetFrequency(AUDIO_BITRATE);
 	osCreateThread(&idle_thread, ID_IDLE, idle, arg, REAL_STACK(IDLE), PR_IDLE);
 	osStartThread(&idle_thread);
 }
@@ -41,6 +41,11 @@ static void idle(void *arg)
 
 static void main(void *arg)
 {
+	extern void change_stage(s32 id);
+	extern bool change_stage_needed();
+	extern s32 target_stage_id;
+	extern int current_stage_index;
+
 	// Initialize Pi Manager/DMA
 	init_reader();
 	load_all_segments();
@@ -62,14 +67,14 @@ static void main(void *arg)
 	debug_printf("[Boot] Initializing graphics\n");
 	init_gfx(scheduler);			// Graphics
 	debug_printf("[Boot] Initializing audio\n");
-	// init_audio();					// Audio player
+	init_audio(scheduler);			// Audio player
 	debug_printf("[Boot] Initializing controller\n");
 	init_controller();				// Controller/SI
 	// ======================================================
 
 	// Initialize boot stage
 	debug_printf("[Boot] Initializing game engine\n");
-	change_stage(11); // -1
+	change_stage(0);
 
 	// Start permanent loop
 	while (1)
@@ -83,6 +88,6 @@ static void main(void *arg)
 		}
 
 		debug_printf("[Engine] Stage changed by internal function\n");
-		change_stage(target_stage);
+		change_stage(target_stage_id);
 	}
 }

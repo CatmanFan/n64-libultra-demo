@@ -5,6 +5,23 @@
 	void crash();
 	void crash_msg(char *msg);
 
+	/*
+	#define crash() { \
+						// TLB exception on load/instruction fetch \
+						long e1; \
+						e1 = *(long *)1; \
+						\
+						// TLB exception on store \
+						*(long *)2 = 2; \
+					}
+
+	#define crash_msg(t) { \
+							extern void set_crash_msg(char *msg); \
+							set_crash_msg(t); \
+							crash(); \
+						 }
+	*/
+
 	#ifdef NDEBUG
 	#define my_assert(EX,M) if (0) { ; }
 	#else

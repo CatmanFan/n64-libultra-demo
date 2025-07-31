@@ -6,22 +6,35 @@
 #include "libultra-easy.h"
 #include "strings.h"
 
-/* ============= PROTOTYPES ============= */
+/* =================================================== *
+ *                 FUNCTION PROTOTYPES                 *
+ * =================================================== */
+ 
+static void fault_threadfunc(void *arg) __attribute__ ((noreturn));
+
+/* =================================================== *
+ *                     PROTOTYPES                      *
+ * =================================================== */
 
 extern Scheduler scheduler;
+extern FrameBuffer *fb_current;
+extern void scheduler_discard_inactive_framebuffers();
+extern void tint_screen_raw(FrameBuffer *fb);
 
+// Fault thread
 static OSThread fault_thread;
 static OSMesg msg_fault;
 static OSMesgQueue msgQ_fault;
 
-static void fault_threadentry(void *arg);
-
-/* ========== STATIC VARIABLES ========== */
-
+// Faulted thread
 static OSThread *thread;
 static __OSThreadContext *tc;
 static s16 cause;
 
+static int faulted_thread_id = -1;
+static int faulted_thread_pri = -1;
+
+// Descriptions
 static char * custom_desc = "";
 static const char *const gCauseDesc[18] = {
     "Interrupt",
@@ -43,30 +56,63 @@ static const char *const gCauseDesc[18] = {
     "Watchpoint exception",
     "Virtual coherency on data",
 };
-
 static int page;
-static bool tinted_screen = FALSE;
 static bool update_fb = FALSE;
+static bool tinted_screen = FALSE;
 
-/* ========== STATIC FUNCTIONS ========== */
+/* =================================================== *
+ *                      FUNCTIONS                      *
+ * =================================================== */
+
+void init_fault()
+{
+	// Initialize message queues
+    osCreateMesgQueue(&msgQ_fault, &msg_fault, 1);
+    osSetEventMesg(OS_EVENT_FAULT, &msgQ_fault, (OSMesg)1);
+    osSetEventMesg(OS_EVENT_CPU_BREAK, &msgQ_fault, (OSMesg)2);
+    osSetEventMesg(OS_EVENT_SP_BREAK, &msgQ_fault, (OSMesg)3);
+
+	// Initialize fault screen queue and thread
+	osCreateThread(&fault_thread, ID_FAULT, fault_threadfunc, NULL, REAL_STACK(FAULT), PR_FAULT);
+	osStartThread(&fault_thread);
+}
+
+void crash()
+{
+	// TLB exception on load/instruction fetch
+	long e1;
+	e1 = *(long *)1;
+
+	// TLB exception on store
+	*(long *)2 = 2;
+}
+
+void crash_msg(char *msg)
+{
+	if (msg != NULL && strlen(msg) > 0)
+		custom_desc = msg;
+
+	crash();
+}
 
 void render_fault_screen()
 {
-	extern void tint_screen_raw();
+	osViBlack(FALSE);
 
 	if (!tinted_screen)
 	{
 		debug_printf("[Fatal] Rendering fault screen to CPU\n");
-		tint_screen_raw();
 		tinted_screen = TRUE;
+
+		tint_screen_raw(fb_current);
 	}
 
 	console_clear();
 	console_puts
 	(
 		str_error,
-		(int)thread->id,
-		(int)thread->priority
+		faulted_thread_id,
+		faulted_thread_pri
 	);
 	console_puts("%s", strlen(custom_desc) > 0 ? custom_desc : gCauseDesc[cause]);
 	console_puts("\n(L/R) P%d", (page + 1));
@@ -115,16 +161,63 @@ void render_fault_screen()
 			console_puts("sp       0x%8x", (int)tc->sp);
 			console_puts("s8       0x%8x", (int)tc->s8);
 			console_puts("ra       0x%8x", (int)tc->ra);
-			console_puts("..       ..........");
 			console_puts("pc       0x%8x", (int)tc->pc);
 			console_puts("badvaddr 0x%8x", (int)tc->badvaddr);
+			console_puts("..       ..........");
 			break;
 	}
-	console_draw_raw();
+	console_draw_raw(fb_current);
+
+	osWritebackDCache(fb_current->address, fb_current->size);
+	osViSwapBuffer(fb_current->address);
 }
 
-static void enter_fault()
+static void fault_threadfunc(void *arg)
 {
+	OSMesg msg;
+	s32 eventFlags;
+    thread = NULL;
+
+	while (thread == NULL)
+	{
+		bool thread_filter;
+		bool msg_filter;
+
+		// Wait until fault message is received
+		(void) osRecvMesg(&msgQ_fault, (OSMesg *)&msg, OS_MESG_BLOCK);
+
+		// Identify faulted thread
+		thread = (OSThread *)__osGetCurrFaultedThread();
+		eventFlags |= (s32)msg;
+
+		// Set preconditions for initiating fault screen
+		thread_filter = thread != NULL && osGetThreadId(thread) != ID_AUDIO;
+		msg_filter = ((eventFlags & 0x01) || (eventFlags & 0x02) || (eventFlags & 0x03));
+
+		if (thread_filter && msg_filter)
+			break;
+
+		thread = NULL;
+		eventFlags = 0;
+	}
+
+	// Initiate screen if fault is detected
+	faulted_thread_id = (int)thread->id;
+	faulted_thread_pri = (int)thread->priority;
+
+	tc = &thread->context;
+	cause = (tc->cause >> 2) & 0x1f;
+	if (cause == 23) // EXC_WATCH
+		cause = 16;
+	if (cause == 31) // EXC_VCED
+		cause = 17;
+
+	osSetThreadPri(&fault_thread, OS_PRIORITY_APPMAX);
+	scheduler.crash = TRUE;
+	scheduler_discard_inactive_framebuffers();
+	update_fb = TRUE;
+	reset_controller();
+
 	debug_printf("[Fatal] Exception occurred at thread %d: %s\n", (int)thread->id, strlen(custom_desc) > 0 ? custom_desc : gCauseDesc[cause]);
 	debug_printf("[GP Registers]\n");
 	debug_printf("at: %x\n", (int)tc->at);
@@ -159,10 +252,8 @@ static void enter_fault()
 	debug_printf("pc: %x\n", (int)tc->pc);
 	debug_printf("badvaddr: %x\n", (int)tc->badvaddr);
 
-	reset_controller();
-
-	scheduler.crash = TRUE;
-	update_fb = TRUE;
+	osViSetSpecialFeatures(OS_VI_GAMMA_OFF);
+	osViBlack(FALSE);
 
 	// Halt everything
 	for (;;)
@@ -170,9 +261,6 @@ static void enter_fault()
 		if (update_fb)
 		{
 			render_fault_screen();
-			osWritebackDCacheAll();
-			osViBlack(FALSE);
-			osViSwapBuffer(osViGetCurrentFramebuffer());
 			update_fb = FALSE;
 		}
 		read_controller();
@@ -191,72 +279,5 @@ static void enter_fault()
 
 		if (page < 0) { page = 3; }
 		if (page > 3) { page = 0; }
-	}
-}
-
-/* ========== GLOBAL FUNCTIONS ========== */
-
-void init_fault()
-{
-	// Initialize message queues
-    osCreateMesgQueue(&msgQ_fault, &msg_fault, 1);
-    osSetEventMesg(OS_EVENT_CPU_BREAK, &msgQ_fault, (OSMesg)0x0A);
-    osSetEventMesg(OS_EVENT_SP_BREAK, &msgQ_fault, (OSMesg)0x0B);
-    osSetEventMesg(OS_EVENT_FAULT, &msgQ_fault, (OSMesg)0x0C);
-
-	// Initialize fault screen queue and thread
-	osCreateThread(&fault_thread, ID_FAULT, fault_threadentry, NULL, REAL_STACK(FAULT), PR_FAULT);
-	osStartThread(&fault_thread);
-}
-
-void crash()
-{
-	// TLB exception on load/instruction fetch
-	long e1;
-	e1 = *(long *)1;
-	
-	// TLB exception on store
-	*(long *)2 = 2;
-}
-
-void crash_msg(char *msg)
-{
-	if (msg != NULL || strlen(msg) > 0)
-		custom_desc = msg;
-
-	crash();
-}
-
-static void fault_threadentry(void *arg)
-{
-	OSMesg msg;
-	s32 eventFlags;
-
-    thread = (OSThread *)NULL;
-	while (1)
-	{
-		if (thread == NULL)
-		{
-			// Wait until fault message is received
-			(void) osRecvMesg(&msgQ_fault, (OSMesg *)&msg, OS_MESG_BLOCK);
-			eventFlags |= (s32)msg;
-
-			// Identify faulted thread
-			thread = (OSThread *)__osGetCurrFaultedThread();
-
-			// Initiate screen if fault is detected
-			if (thread && ((eventFlags & 0x0A) || (eventFlags & 0x0B) || (eventFlags & 0x0C)))
-			{
-				tc = &thread->context;
-				cause = (tc->cause >> 2) & 0x1f;
-				if (cause == 23) // EXC_WATCH
-					cause = 16;
-				if (cause == 31) // EXC_VCED
-					cause = 17;
-
-				enter_fault();
-				return;
-			}
-		}
 	}
 }

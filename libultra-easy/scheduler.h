@@ -27,11 +27,13 @@
 		bool         is_changing_res;
         bool         reset;      // Whether the reset button was recently pressed
 		bool         crash;      // Whether the crash thread was executed
-        OSTask*               task_gfx;    // Current executing graphics task
-        OSTask*               task_audio;  // Current executing audio task
+		int          current_status;
+        OSTask*      task_gfx;    // Current executing graphics task
+        OSTask*      task_audio;  // Current executing audio task
         OSMesgQueue  queue;
         OSMesg       msg[SC_MSG_COUNT];
-        OSMesgQueue*          gfx_notify;
+        OSMesgQueue* gfx_notify;
+        OSMesgQueue* audio_notify;
     } Scheduler;
 
     /*********************************
@@ -39,6 +41,5 @@
     *********************************/
 
     Scheduler* init_scheduler();
-	int scheduler_get_status();
 
 #endif

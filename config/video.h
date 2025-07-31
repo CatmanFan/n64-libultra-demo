@@ -18,7 +18,8 @@
 
 /**
  * Permanently sets the screen depth to 32-bit (instead of 16-bit).
- * WARNING: Enabling this breaks dynamic screen resolution!
+ *
+ * /!\ This feature requires an Expansion Pak!
  */
 // #define VIDEO_32BIT
 
@@ -45,6 +46,6 @@
 /**
  * Define the size of dynamic display lists.
  */
-#define GDL_SIZE 0x1000
+#define GDL_SIZE 0x2000
 
 #endif

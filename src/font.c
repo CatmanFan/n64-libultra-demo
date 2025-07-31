@@ -224,12 +224,10 @@ void draw_text(const char *txt, Font *font, int x, int y, int bounds_w, int boun
 				gDPLoadTLUT_pal256(glistp++, font->tlut);
 			}
 
-			gDPLoadMultiTile
+			gDPLoadTextureTile
 			(
 				glistp++,
 				font->multi_bmp ? font->bmp + chrs[chr].glyph * (font->glyphs[0].width * font->glyphs[0].height) : font->bmp,
-				0,
-				G_TX_RENDERTILE,
 				G_IM_FMT_CI,
 				G_IM_SIZ_8b,
 				font->bmp_width,

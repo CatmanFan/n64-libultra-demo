@@ -95,19 +95,19 @@ void display_set(int highres)
 	{
 		case OS_TV_PAL:
 			#ifdef VIDEO_FPAL
-			viMode = OS_VI_FPAL_LPN1;
+			viMode = OS_VI_FPAL_LAN1;
 			display.yscale = 0.833;
 			#else
-			viMode = OS_VI_PAL_LPN1;
+			viMode = OS_VI_PAL_LAN1;
 			#endif
 			break;
 
 		case OS_TV_MPAL:
-			viMode = OS_VI_MPAL_LPN1;
+			viMode = OS_VI_MPAL_LAN1;
 			break;
 
 		case OS_TV_NTSC:
-			viMode = OS_VI_NTSC_LPN1;
+			viMode = OS_VI_NTSC_LAN1;
 			break;
 	}
 
@@ -117,7 +117,7 @@ void display_set(int highres)
 
 	// Increment viMode based on video depth
 	if (display.is_32bit == TRUE)
-		viMode += 4;
+		viMode += display.highres == TRUE ? 2 : 4;
 
 	// viMode += 1; // Interlaced / Deflickered interlaced
 
@@ -131,7 +131,7 @@ void display_set(int highres)
 
 	osViSetMode(&osViModeTable[viMode]);
 	osViSetSpecialFeatures(OS_VI_GAMMA_OFF);
-	osViSetSpecialFeatures(OS_VI_GAMMA_DITHER_OFF); // set to ON if G_CD_MAGICSQ
+	osViSetSpecialFeatures(OS_VI_GAMMA_DITHER_OFF);
 	// osViSetSpecialFeatures(OS_VI_DIVOT_OFF);
 	#ifndef VIDEO_32BIT
 		// osViSetSpecialFeatures(OS_VI_DITHER_FILTER_OFF); // set to ON if G_CD_MAGICSQ

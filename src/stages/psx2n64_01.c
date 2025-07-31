@@ -1,11 +1,12 @@
 #include <ultra64.h>
+#include <string.h>
 
 /* === Configuration === */
 #include "config/video.h"
 
 /* === Default libraries === */
 #include "libultra-easy/types.h"
-// #include "libultra-easy/audio.h"
+#include "libultra-easy/audio.h"
 #include "libultra-easy/console.h"
 #include "libultra-easy/controller.h"
 #include "libultra-easy/display.h"
@@ -13,42 +14,59 @@
 #include "libultra-easy/rcp.h"
 #include "libultra-easy/gfx_2d.h"
 #include "libultra-easy/gfx_3d.h"
-// #include "libultra-easy/fs.h"
+#include "libultra-easy/fs.h"
 #include "libultra-easy/time.h"
 
 /* === Custom libraries === */
+#include "psx_config.h"
 #include "strings.h"
+#include "stages.h"
 
-/* =============== ASSETS =============== */
-
-#include "assets/fonts/psx_bios.h"
-#include "assets/fonts/terminus.h"
+/* [ASSETS]
+========================================= */
 #include "assets/models/psx_logo.h"
+#include "assets/fonts/psx_bios.h"
 #include "assets/sprites/biosA_ps.h"
 #include "assets/sprites/biosB_ps.h"
 
-/* ========== STATIC VARIABLES ========== */
+/* [SEGMENTS]
+========================================= */
+// SEGMENT_DECLARE(bgm_psx_logo_0)
 
-static simpleObj psx_logo = { .dl = psx_logo_mesh, .scale = 1.0 };
-static Light ambient;
-static Light direct;
-
+/* [VARIABLES]
+========================================= */
 static sprite_t ps_text;
+
+static char rom_region;
+
+static int text_type;
 
 static f64 time_elapsed;
 static bool passed_first_stage;
+static f64 time_end_gfx;
+static f64 time_end_audio;
+static f64 time_end;
+
 static f64 alpha1;
 static f64 alpha2;
 
 static int scale_2d;
 
-// #define PFEAR
-#define BIOS_VER 4.0
+static char txt[0x200];
+
 static float BIOS = BIOS_VER;
 
-/* ========== STATIC FUNCTIONS ========== */
+/* [3D MODELS]
+========================================= */
+static Light ambient;
+static Light direct;
+static simpleObj psx_logo = { .dl = psx_logo_mesh, .scale = 1.0 };
 
-/* ========== GLOBAL FUNCTIONS ========== */
+/* [STATIC FUNCTIONS]
+========================================= */
+
+/* [MAIN FUNCTIONS]
+========================================= */
 
 /* ==============================
  * Initializes stage.
@@ -63,10 +81,13 @@ void psx2n64_01_init()
     *(u32*)0x11111111 = 0; // trigger an exception via unaligned memory access
 	#endif
 
-	// display_set(1);
+	display_set(1);
 	scale_2d = display_highres() ? 1 : 2;
 
 	time_elapsed = 0.0;
+	time_end_gfx = 10.0;
+	time_end_audio = 9.25;
+	time_end = time_end_audio ? time_end_gfx : time_end_audio;
 
 	vec3_set(psx_logo.pos, 31, 137, -1100);
 	vec3_set(psx_logo.rot, 22.8, 2.5, 1);
@@ -86,13 +107,100 @@ void psx2n64_01_init()
 	}
 	else
 	{
-		sprite_create_tlut(&ps_text, BIOS2_ps_tex, BIOS2_ps_tlut, 199, 40, 1, G_IM_SIZ_4b);
+		sprite_create_tlut(&ps_text, BIOS2_ps_tex, BIOS2_ps_tlut, 199, 40, 1, G_IM_SIZ_8b);
 		ps_text.x = 228 / scale_2d;
 		ps_text.y = (270 + 1) / scale_2d;
 	}
+
 	ps_text.r = 0;
 	ps_text.g = 0;
 	ps_text.b = 0;
+
+	rom_region = get_rom_region();
+
+	#ifdef USE_CUSTOM_TEXT
+	text_type = 3;
+	#elif (REGION == 3)
+	switch (rom_region)
+	{
+		default:
+		case 'J':
+		case 'A': // Asia
+		case 'C': // China (iQue)
+		case 'K': // Korea
+		case '7': // Beta
+			text_type = 0;
+			break;
+
+		case 'E':
+		case 'B': // Brazil
+		case 'G': // Gateway America
+			text_type = 1;
+			break;
+
+		case 'P':
+		case 'X':
+		case 'Y':
+		case 'L': // Gateway Europe
+		case 'D': // Germany
+		case 'F': // France
+		case 'H': // Holland (Netherlands)
+		case 'I': // Italy
+		case 'S': // Spain
+		case 'U': // Australia
+		case 'W': // Scandinavia
+			text_type = 2;
+			break;
+	};
+	#else
+	text_type = REGION;
+	#endif
+
+	bzero(txt, array_size(txt));
+	switch (text_type)
+	{
+		case 0:
+		default:
+			strcat(txt, "Licensed  by\nSony Computer Entertainment Inc.");
+			break;
+		case 1:
+			strcat(txt, "Licensed  by\nSony Computer Entertainment America ");
+			break;
+		case 2:
+			strcat(txt, "Licensed  by\nSony Computer Entertainment Europe");
+			break;
+		case 3:
+			strcat(txt, CUSTOM_LINE1);
+			strcat(txt, "\n");
+			strcat(txt, CUSTOM_LINE2);
+			break;
+	}
+
+	if (BIOS < 5.0)
+	{
+		strcat(txt, "\n\n");
+		switch (text_type)
+		{
+			case 0:
+			default:
+				strcat(txt, "SCEI");
+				break;
+			case 1:
+				strcat(txt, "SCEA");
+				break;
+			case 2:
+				strcat(txt, "SCEE");
+				break;
+			case 3:
+				strcat(txt, CUSTOM_ABBR);
+				break;
+		}
+		strcat(txt, "™\n");
+	}
+	else
+	{
+		strcat(txt, "\n\n \n");
+	}
 }
 
 /* ==============================
@@ -115,6 +223,11 @@ void psx2n64_01_update()
 			alpha2 = time_elapsed * 2 - 1.0;
 		else
 			alpha2 = 1.0;
+
+		if (time_elapsed >= (time_end_gfx > time_end_audio ? time_end_gfx : time_end_audio))
+		{
+			request_stage_change("test_menu");
+		}
 	}
 
 	ps_text.r = round(255 * alpha2);
@@ -129,8 +242,8 @@ void psx2n64_01_render()
 {
 	extern void draw_text(const char *txt, Font *font, int x, int y, int bounds_w, int bounds_h, int align, int line_spacing, bool line_wrap, bool transparent);
 
-	vec3 cam = {0, 0, 1600};
-	vec3 dest = {0, 0, -1};
+	vec3 cam = {0, passed_first_stage ? 0 : 4.5, 1600};
+	vec3 dest = {0, passed_first_stage ? 0 : 4.5, -1};
 	int i;
 
 	for (i = 0; i < 3; i++)
@@ -142,7 +255,7 @@ void psx2n64_01_render()
 	}
 
 	clear_zfb();
-	clear_cfb(100, 0, 0);
+	clear_cfb(0, 0, 0);
 
 	gSPNumLights(glistp++, NUMLIGHTS_1);
 	gSPLight(glistp++, &direct, 1);
@@ -159,9 +272,28 @@ void psx2n64_01_render()
 		sprite_draw(&ps_text);
 		sprite_finish();
 
-		// draw_text("Hi bitches!", &psx_bios_font, 120, 331, 400, 38, 1, 2, FALSE, TRUE);
-		draw_text("abcdefgh", joypad_is_pressed(A_BUTTON, 0) ? &psx_bios_font : &terminus, 20, 20, 0, 0, 0, 0, FALSE, TRUE);
+		draw_text(txt, &psx_bios_font, 125, 331 + 1, 400, 80, 1, 2, FALSE, TRUE);
 	}
+
+	#ifdef VERBOSE
+	console_clear();
+	console_puts("Stage time: %0.2f / %0.2f", time_elapsed, time_end);
+	console_puts("Next marker in %0.2f\n", (time_elapsed < 0.5 ? 0.5 : time_elapsed < time_end_gfx && time_end_gfx < time_end ? time_end_gfx : time_end) - time_elapsed);
+	console_puts("FPS: %2d", fps());
+	if (display_tvtype() == 0) { console_puts("Video mode: PAL"); }
+	if (display_tvtype() == 1) { console_puts("Video mode: NTSC"); }
+	if (display_tvtype() == 2) { console_puts("Video mode: MPAL"); }
+	console_puts("Cartridge region: %c", rom_region);
+	#if (REGION == 3)
+	console_puts("Cartridge region determines text setting");
+	#else
+	if (text_type == 1) 	   { console_puts("Text region: America"); }
+	else if (text_type == 2)   { console_puts("Text region: Europe"); }
+	else if (text_type == 3)   { console_puts("Text region: Custom"); }
+	else					   { console_puts("Text region: Japan"); }
+	#endif
+	console_draw_dl();
+	#endif
 }
 
 void psx2n64_01_destroy()

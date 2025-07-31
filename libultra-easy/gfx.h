@@ -16,6 +16,7 @@ typedef struct
 {
 	int id;
 	void *address;
+	s32 size;
 	Gfx *dl;
 	enum FB_STATUS status;
 } FrameBuffer;
@@ -43,6 +44,11 @@ typedef struct
 void init_gfx(Scheduler *sc);
 
 /**
+ * @brief Stops the graphics subsystem and thread.
+ */
+void gfx_close();
+
+/**
  * @brief Sends a render task request to the graphics thread.
  *
  * @param[in] func
@@ -55,14 +61,14 @@ void init_gfx(Scheduler *sc);
 void gfx_request_render(void (*func)(), bool usecpu, bool swapbuffer);
 
 /**
- * @brief The number of active framebuffers, as specified by CFB_COUNT.
+ * @brief The number of total framebuffers, as specified by CFB_COUNT.
  */
-FrameBuffer framebuffers[CFB_COUNT];
+FrameBuffer framebuffers[3];
 
 /**
- * @brief Returns the framebuffer currently in use.
+ * @brief The number of currently active framebuffers.
  */
-FrameBuffer* current_framebuffer();
+int num_active_framebuffers();
 
 /**
  * @brief The Z-Buffer. Remains stationary.
