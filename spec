@@ -1,4 +1,4 @@
-#include "config/global.h"
+#include "config/stack.h"
 
 /* =================================================== *
  *                     CODE SEGMENT                    *
@@ -8,8 +8,8 @@ beginseg
 	name    "code"
 	flags   BOOT OBJECT
 	entry   boot
-	address 0x80000400
-	maxsize 0x00100000
+	// address 0x80000400
+	// maxsize 0x00100000
 	stack   STACK_ADDR_BOOT + STACK_SIZE_BOOT
 	include $(CODESEGMENT)
 	include "$(ROOT)/usr/lib/PR/rspboot.o"
@@ -51,37 +51,75 @@ endseg */
  *                        AUDIO                        *
  * =================================================== */
 
+// Music bank: "GenMidiBank"
+// =========================================
+beginseg
+	name "GenMidiBank_ctl"
+	flags RAW
+	include "src/assets/audio/banks/GenMidi44k.ctl"
+endseg
+beginseg
+	name "GenMidiBank_tbl"
+	flags RAW
+	include "src/assets/audio/banks/GenMidi44k.tbl"
+endseg
+// =========================================
+
 // Music bank: "playstation"
 // =========================================
 beginseg
-	name "bgmCtl_playstation"
+	name "playstation_ctl"
 	flags RAW
 	include "src/assets/audio/banks/playstation.ctl"
 endseg
 beginseg
-	name "bgmTbl_playstation"
+	name "playstation_tbl"
 	flags RAW
 	include "src/assets/audio/banks/playstation.tbl"
 endseg
 // =========================================
 
 beginseg
-	name "bgm_sce_logo_0"
+	name "psx_boot_sample_mid"
 	flags RAW
-	include "src/assets/audio/music/sce_logo_0.mid"
+	include "src/assets/audio/music/psx_boot_sample.mid"
+endseg
+
+beginseg
+	name "aicha_mid"
+	flags RAW
+	include "src/assets/audio/music/aicha.mid"
+endseg
+
+beginseg
+	name "thomas_mid"
+	flags RAW
+	include "src/assets/audio/music/thomas.mid"
+endseg
+
+beginseg
+	name "wrecking_ball_mid"
+	flags RAW
+	include "src/assets/audio/music/wrecking_ball.mid"
+endseg
+
+beginseg
+	name "test_mid"
+	flags RAW
+	include "src/assets/audio/music/test.seq"
 endseg
 
 // Sound bank: "sample.sounds"
 // =========================================
 beginseg
-	name "sfx_sample"
+	name "sfx_warioware_diy_sounds"
 	flags RAW
-	include "src/assets/audio/sounds/sample.sounds"
+	include "src/assets/audio/sounds/sfx_warioware_diy.sounds"
 endseg
 beginseg
-	name "sfxTbl_sample"
+	name "sfx_warioware_diy_sounds_tbl"
 	flags RAW
-	include "src/assets/audio/sounds/sample.sounds.tbl"
+	include "src/assets/audio/sounds/sfx_warioware_diy.sounds.tbl"
 endseg
 // =========================================
 
@@ -94,13 +132,19 @@ beginwave
 	include "code"
 
 	// Sound banks
-	include "sfx_sample"
-	include "sfxTbl_sample"
+	include "sample_sounds"
+	include "sample_sounds_tbl"
 
 	// Instrument banks
-	include "bgmCtl_playstation"
-	include "bgmTbl_playstation"
+	include "GenMidiBank_ctl"
+	include "GenMidiBank_tbl"
+	include "playstation_ctl"
+	include "playstation_tbl"
 
 	// MIDIs
-	include "bgm_sce_logo_0"
+	include "psx_boot_sample_mid"
+	include "aicha_mid"
+	include "thomas_mid"
+	include "wrecking_ball_mid"
+	include "test_mid"
 endwave

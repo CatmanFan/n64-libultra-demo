@@ -3,29 +3,32 @@
 #include "libultra-easy.h"
 
 #ifdef ENABLE_AUDIO
-#define ENABLE_DMA
 
 /* =================================================== *
- *                       MACROS                        *
+ *                        MACROS                       *
  * =================================================== */
 
-#define DMA_BUFF_COUNT		64
-#define DMA_BUFF_SIZE		1024
+#define ENABLE_DMA
+
 #define AUDIO_BUFF_COUNT	3
-#define AUDIO_BUFF_SIZE		1024 * 2 // Number of frames in an audio buffer.
-#define AUDIO_CL_COUNT		3
-#define AUDIO_CL_SIZE		4096
-#define AUDIO_FRAME_COUNT	2
-#define AUDIO_SEQ_COUNT		3
-#define AUDIO_SEQ_SIZE		40 * 1024
+#define AUDIO_BUFF_SIZE		(2 * 1024) // Number of frames in an audio buffer.
+#define AUDIO_MSG_COUNT		8
 
-#define MAX_VOICES			4
-#define MAX_UPDATES			256
-#define MAX_EVENTS			32
-#define MAX_SOUNDS			16
-#define MAX_CHANNELS		16
+#define AUDIO_CL_COUNT		2
+#define AUDIO_CL_MAX		4096
 
-#define EXTRA_SAMPLES		80
+#define DMA_BUFF_COUNT		16
+#define DMA_BUFF_SIZE		2048
+
+#define MAX_VOICES			32
+#define MAX_UPDATES			128
+#define MAX_EVENTS			128
+
+#define EXTRA_SAMPLES		96
+
+/* =================================================== *
+ *                       STRUCTS                       *
+ * =================================================== */
 
 /* =================================================== *
  *                 FUNCTION PROTOTYPES                 *
@@ -41,64 +44,40 @@ static void _bnkfPatchWaveTable(ALWaveTable* w, s32 offset, s32 table);
  *                     PROTOTYPES                      *
  * =================================================== */
 
-// Main buffers
-static Acmd audio_cl[AUDIO_CL_COUNT][AUDIO_CL_SIZE] __attribute__((aligned(16)));
-static bool audio_cl_busy[AUDIO_CL_COUNT];
-
-/*static*/ u8 audio_buffers[AUDIO_BUFF_COUNT][AUDIO_BUFF_SIZE];
-/*static*/ bool audio_buffers_busy[AUDIO_CL_COUNT];
-
-/*static*/ int audio_samples_per_frame;
-
-// Players
-static ALSndPlayer* sound_player;
-static ALSeqPlayer* music_player;
-
-// Bank request buffers
-SEGMENT_DECLARE(bgmCtl_playstation)
-SEGMENT_DECLARE(bgmTbl_playstation)
-SEGMENT_DECLARE(sfx_sample)
-SEGMENT_DECLARE(sfxTbl_sample)
-
-AudioBank banks[] =
-{
-	{
-		.name = "playstation",
-		.ctl_start = SEGMENT_START(bgmCtl_playstation),
-		.ctl_end = SEGMENT_END(bgmCtl_playstation),
-		.tbl_start = SEGMENT_START(bgmTbl_playstation),
-		.is_sound = FALSE
-	},
-};
-
-// Sound table
-static ALBank*			music_bank;
-static SoundArray*		sound_bank;
-
-// Music sequence table
-static ALSeq			*sequences[AUDIO_SEQ_COUNT];
-static s32				sequenceLen[AUDIO_SEQ_COUNT];
-static u8				*sequenceData[AUDIO_SEQ_COUNT];
-static ALSeqMarker		sequenceStart[AUDIO_SEQ_COUNT];
-static ALSeqMarker		sequenceLoopStart[AUDIO_SEQ_COUNT];
-static ALSeqMarker		sequenceEnd[AUDIO_SEQ_COUNT];
-static SeqPlayEvent		pendingSeq;
-static char*			currentSeq;
-static int				targetSeq;
-
-// Parameters
+// Global parameters
+static int				audio_heap_free;
+static bool				audio_initialized = FALSE;
+static Scheduler*		scheduler;
 static ALGlobals		globals;
 static ALHeap			heap;
 
-static bool				audio_initialized = FALSE;
+// Global buffers
+static Acmd 			audio_cl[AUDIO_CL_COUNT][AUDIO_CL_MAX];
+static s32				audio_buffers[AUDIO_BUFF_COUNT][AUDIO_BUFF_SIZE] __attribute__((aligned(64)));
+
+// Used to calculate samples per frame
+static int				frame_size;
+static int				frame_min;
+static int				frame_max;
+static int				samples_size;
+static int				samples_remaining;
+
+// Players
+static ALSeqPlayer		music_player;
+static ALSndPlayer		sound_player;
+
+// Pointers to current address
+static char*			music_bank_current;
+static char*			midi_current;
+
+// Dynamically-allocated buffers
+static Sound			active_sounds[MAX_SOUNDS];
 
 static OSThread			audio_thread;
-static OSMesg			msg_ai;
+static OSMesg			msg_ai[AUDIO_MSG_COUNT];
 static OSMesgQueue		msg_queue_ai;
-static OSMesg			msg_frame[AUDIO_FRAME_COUNT];
-static OSMesgQueue		msg_queue_frame;
-
-static Scheduler *scheduler;
+static OSMesg			msg_trigger[AUDIO_MSG_COUNT];
+static OSMesgQueue		msg_queue_trigger;
 
 /* =================================================== *
  *                         DMA                         *
@@ -127,12 +106,15 @@ static Scheduler *scheduler;
 	/* Callbacks and other functions
 	   --------------------------------------------------- */
 
+	static OSIoMesg msg_io_dma_audio[DMA_BUFF_COUNT];
+	static OSMesg msg_dma_audio[DMA_BUFF_COUNT];
+	static OSMesgQueue msg_queue_dma_audio;
+
 	static u16 dmaNext;
 	static u16 dmaCurrent;
 
-	static OSMesg dma_msg[DMA_BUFF_COUNT];
-	static OSIoMesg dma_msg_io[DMA_BUFF_COUNT];
-	static OSMesgQueue dma_msg_queue;
+	// Taken from fs.c
+	extern OSPiHandle* rom_handle;
 
 	static s32 audio_dma_callback(s32 addr, s32 len, void *state)
 	{
@@ -174,41 +156,33 @@ static Scheduler *scheduler;
 		else
 		{
 			// Use these variables only if the oldest buffer is to be found.
-			extern OSPiHandle* rom_handle;
 			u32 dma_src = data_start & ~1u;
 			u8* dma_dest = (u8 *)dma_buffer[dma_oldest];
 			u32 dma_size = (u32)DMA_BUFF_SIZE;
-			OSMesg dummy;
 
-			/*
-			 * Always invalidate cache before dma'ing data into the buffer.
-			 * This is to prevent a flush of the cache in the future from 
-			 * potentially trashing some data that has just been dma'ed in.
-			 * Since you don't care if old data makes it from cache out to 
-			 * memory, you can use the cheaper osInvalDCache() instead of one
-			 * of the writeback commands
-			 */
-			osWritebackDCache(dma_dest, dma_size);
-			osInvalDCache(dma_dest, dma_size);
-			osInvalICache(dma_dest, dma_size);
+			// osWritebackDCache(dma_dest, dma_size);
+			// osInvalDCache(dma_dest, dma_size);
+			// osInvalICache(dma_dest, dma_size);
 
-			dma_msg_io[dmaNext] = (OSIoMesg)
+			msg_io_dma_audio[dmaNext] = (OSIoMesg)
 			{
-				.hdr = { .pri = OS_MESG_PRI_NORMAL, .retQueue = &dma_msg_queue },
+				.hdr = { .pri = OS_MESG_PRI_NORMAL, .retQueue = &msg_queue_dma_audio },
 				.dramAddr = dma_dest,
 				.devAddr  = dma_src,
 				.size     = dma_size,
 			};
 
-			osEPiStartDma(rom_handle, &dma_msg_io[dmaNext], OS_READ);
-			(void) osRecvMesg(&dma_msg_queue, &dummy, OS_MESG_BLOCK);
+			osEPiStartDma(rom_handle, &msg_io_dma_audio[dmaNext], OS_READ);
 
-			osWritebackDCache(dma_dest, dma_size);
-			osInvalDCache(dma_dest, dma_size);
-			osInvalICache(dma_dest, dma_size);
+			// osWritebackDCache(dma_dest, dma_size);
+			// osInvalDCache(dma_dest, dma_size);
+			// osInvalICache(dma_dest, dma_size);
 
-			dma_table[dma_oldest].age = 0;
-			dma_table[dma_oldest].offset = dma_src;
+			dma_table[dma_oldest] = (DMAMetadata)
+			{
+				.age = 0,
+				.offset = dma_src,
+			};
 
 			dmaNext = (dmaNext + 1) % DMA_BUFF_COUNT;
 			dmaCurrent++;
@@ -222,6 +196,16 @@ static Scheduler *scheduler;
 		return audio_dma_callback;
 	}
 
+	static void audio_init_dma()
+	{
+		// Mark all DMA buffers as "old" so they get used.
+		int i;
+		for (i = 0; i < DMA_BUFF_COUNT; i++)
+			dma_table[i].age = 1;
+
+		osCreateMesgQueue(&msg_queue_dma_audio, msg_dma_audio, DMA_BUFF_COUNT);
+	}
+
 	static void audio_clear_dma()
 	{
 		int i;
@@ -230,10 +214,9 @@ static Scheduler *scheduler;
 		while (1)
 		{
 			OSMesg dummy;
-			int r = osRecvMesg(&dma_msg_queue, &dummy, OS_MESG_NOBLOCK);
+			int r = osRecvMesg(&msg_queue_dma_audio, &dummy, OS_MESG_NOBLOCK);
 			if (r == -1)
 				break;
-
 			current--;
 		}
 
@@ -256,7 +239,7 @@ static Scheduler *scheduler;
  *                       HELPERS                       *
  * =================================================== */
 
-static s32 get_bank_index(const char *name)
+/*static s32 get_bank_index(const char *name)
 {
 	s32 index;
 	for (index = 0; index < array_size(banks); index++)
@@ -264,19 +247,7 @@ static s32 get_bank_index(const char *name)
 			return index;
 
 	return -1;
-}
-
-static void set_frame_size(int output_rate)
-{
-	if (display_tvtype() == 0) // PAL
-	{
-		audio_samples_per_frame = (output_rate + 25) / 50;
-	}
-	else
-	{
-		audio_samples_per_frame = (output_rate * 1001 + 30000) / 60000;
-	}
-}
+}*/
 
 /* =================================================== *
  *                 AUDIO TASK HANDLERS                 *
@@ -294,100 +265,60 @@ static OSTask audio_task =
 	.dram_stack_size  = 0,
 }};
 
+static Acmd *cl_start, *cl_end;
 static int buffer_index, cl_index;
+static s32 cl_length;
 
-static void audio_handle_buffer()
+int audio_sample_xxx;
+
+static void audio_push()
 {
-
-	osRecvMesg(&msg_queue_frame, NULL, OS_MESG_BLOCK);
-
-	/* =================================================== *
-	 *                   BUFFER HANDLING                   *
-	 * =================================================== */
-
-	// for (i = 0; i < AUDIO_BUFF_COUNT; i++)
-	// {
-		// unsigned phase = 0;
-		// unsigned rate = ((50 * (i + 4)) << 16) / AUDIO_BITRATE;
-
-		// int j;
-		// for (j = 0; j <= AUDIO_BUFF_SIZE - 1; j+=2)
-		// {
-			// audio_buffers[i][j] = (i * 4) * 0x8000 / 0x200;
-
-			// audio_buffers[i][j] = phase;
-			// audio_buffers[i][j + 1] = phase;
-			// phase += rate;
-		// }
-	// }
-
-	// osWritebackDCache(audio_buffers, sizeof(audio_buffers));
-
-#ifdef ENABLE_DMA
-	// Clear and update DMA
-	audio_clear_dma();
-#endif
-}
-
-Acmd *cl_start, *cl_end;
-s16 *buffer_address;
-s32 cl_length = 0;
-
-static void audio_do_task()
-{
-
-	// Look for an audio buffer
-	for (buffer_index = 0; buffer_index < AUDIO_BUFF_COUNT; buffer_index++)
-	{
-		if (!audio_buffers_busy[buffer_index])
-		{
-			debug_printf("[Audio] Found empty audio buffer at slot %d\n", buffer_index);
-
-			// Look for an audio command list slot
-			for (cl_index = 0; cl_index < AUDIO_CL_COUNT; cl_index++)
-			{
-				if (!audio_cl_busy[cl_index])
-				{
-					debug_printf("[Audio] Found free audio command list at slot %d\n", cl_index);
-					goto do_task;
-				}
-			}
-
-			// Terminate if no command list slot was found
-			debug_printf("[Audio] No available audio command list found, skipping...\n");
-			return;
-		}
-	}
-
-	// Terminate if no buffer was found
-	debug_printf("[Audio] No available audio buffer found, skipping...\n");
-	return;
-
-	do_task:
-	audio_buffers_busy[buffer_index] = TRUE;
-	buffer_address = (s16 *)osVirtualToPhysical(audio_buffers[buffer_index]);
+	// Set sample size
+	samples_size = (16 + (frame_size - samples_remaining + EXTRA_SAMPLES)) & ~0xf;
+	if (samples_size < frame_min) samples_size = frame_min;
+	if (samples_size > frame_max) samples_size = frame_max;
+	audio_sample_xxx = samples_size;
 
 	// Create the command list.
-	audio_cl_busy[cl_index] = TRUE;
+	cl_length = 0;
+	cl_index = (cl_index + 1) % AUDIO_CL_COUNT;
 	cl_start = audio_cl[cl_index];
-	cl_end = alAudioFrame(cl_start, &cl_length, buffer_address, audio_samples_per_frame);
-	my_assert(cl_end - cl_start < AUDIO_CL_SIZE, "Audio assertion failed");
+	cl_end = alAudioFrame
+	(
+		cl_start,
+		&cl_length,
+		(s16 *)osVirtualToPhysical(audio_buffers[buffer_index]),
+		samples_size
+	);
+
+	// Check that the Acmd length is valid.
+	my_assert(cl_length <= AUDIO_CL_MAX, "Audio assertion failed");
+	if (cl_length == 0)
+		return;
 
 	// Create and submit the task.
-	audio_task.t.ucode_boot       = (u64*)rspbootTextStart;
-	audio_task.t.ucode_boot_size  = ((u32)rspbootTextEnd-(u32)rspbootTextStart);
+	if (audio_task.t.ucode_boot_size == 0)
+	{
+		audio_task.t.ucode_boot       = (u64*)rspbootTextStart;
+		audio_task.t.ucode_boot_size  = ((u32)rspbootTextEnd-(u32)rspbootTextStart);
+	}
 	audio_task.t.data_ptr         = (u64 *)cl_start;
 	audio_task.t.data_size        = sizeof(Acmd) * (cl_end - cl_start);
-	// osWritebackDCache(cl_start, sizeof(Acmd) * (cl_end - cl_start));
-	osWritebackDCacheAll();
+	osWritebackDCache(cl_start, sizeof(Acmd) * (cl_end - cl_start));
+	// osWritebackDCacheAll();
 
 	// Do the thing
 	debug_printf("[Audio] Beginning audio task.\n");
-	osSpTaskStart(&audio_task);
+	scheduler->task_audio = &audio_task;
+	osSpTaskStart(scheduler->task_audio);
 
 	// Wait for task to finish
-	// (void)osRecvMesg(&msg_queue_ai, NULL, OS_MESG_BLOCK);
+	debug_printf("[Audio] Waiting for AI message queue\n");
+	scheduler->audio_notify = &msg_queue_ai;
+	(void)osRecvMesg(&msg_queue_ai, NULL, OS_MESG_BLOCK);
+
 	debug_printf("[Audio] Finished audio task.\n");
+	scheduler->task_audio = NULL;
 }
 
 static void audio_pop()
@@ -395,15 +326,15 @@ static void audio_pop()
 	// On real hardware, it seems that there is some issue with the
 	// ordering of the events. So we don't assume that the audio
 	// device isn't busy just because this function was called.
-	
+
 	// Just try to push the next buffer, and fail otherwise.
-	if (osAiSetNextBuffer(audio_buffers[buffer_index], audio_samples_per_frame) != 0)
+	if (osAiSetNextBuffer(audio_buffers[buffer_index], samples_size << 2) != 0)
+	{
+		debug_printf("[Audio] Failed to push audio buffer at slot %d\n", buffer_index);
 		return;
+	}
 
-	audio_buffers_busy[buffer_index] = FALSE;
-	audio_cl_busy[cl_index] = FALSE;
-
-	// samples_remaining = /* IO_READ(AI_LEN_REG) */ osAiGetLength() >> 2;
+	buffer_index = (buffer_index + 1) % AUDIO_BUFF_COUNT;
 }
 
 #endif
@@ -432,13 +363,8 @@ void init_audio(Scheduler *sc)
 			scheduler = sc;
 
 			// Initialize message queues
-		#ifdef ENABLE_DMA
-			osCreateMesgQueue(&dma_msg_queue, dma_msg, DMA_BUFF_COUNT);
-		#endif
-			osCreateMesgQueue(&msg_queue_ai, &msg_ai, 1);
-			osCreateMesgQueue(&msg_queue_frame, msg_frame, AUDIO_FRAME_COUNT);
-			osSetEventMesg(OS_EVENT_AI, &msg_queue_ai, (OSMesg)SC_MSG_AUDIO);
-			scheduler->audio_notify = &msg_queue_frame;
+			osCreateMesgQueue(&msg_queue_ai, msg_ai, AUDIO_MSG_COUNT);
+			osCreateMesgQueue(&msg_queue_trigger, msg_trigger, AUDIO_MSG_COUNT);
 
 			// Create the audio thread
 			osCreateThread(&audio_thread, ID_AUDIO, audio_threadfunc, NULL, REAL_STACK(AUDIO), PR_AUDIO);
@@ -452,51 +378,84 @@ void init_audio(Scheduler *sc)
 }
 
 #ifdef ENABLE_AUDIO
+static void *audio_heap_alloc(int size)
+{
+	if (size > audio_heap_free)
+	{
+		crash_msg("Audio heap is full");
+		for (;;) { ; }
+	}
+
+	audio_heap_free -= size;
+	return alHeapAlloc(&heap, 1, size);
+}
+
+static void audio_heap_dealloc(void *address, int size)
+{
+	bzero(address, size);
+	audio_heap_free += size;
+}
+
+/**
+ * @brief Blanks the audio heap and initializes it, alongside any other
+ * buffers dependent on the audio heap.
+ */
+static void audio_heap_reset()
+{
+	if (audio_initialized) bzero((u8 *)AUDIO_HEAP_ADDR, AUDIO_HEAP_SIZE);
+	alHeapInit(&heap, (u8 *)AUDIO_HEAP_ADDR, AUDIO_HEAP_SIZE);
+	audio_heap_free = AUDIO_HEAP_SIZE;
+
+	{
+		// int i;
+
+		// Audio buffers
+		// for (i = 0; i < AUDIO_BUFF_COUNT; i++)
+		// {
+			// audio_buffers[i].data = audio_heap_alloc(sizeof(s32) * AUDIO_BUFF_SIZE);
+			// audio_buffers[i].busy = FALSE;
+		// }
+
+		// Audio command lists
+		// for (i = 0; i < AUDIO_CL_COUNT; i++)
+			// audio_cl[i].data = (Acmd*)audio_heap_alloc(sizeof(Acmd) * AUDIO_CL_MAX);
+	}
+}
+
 static void audio_threadfunc(void *arg)
 {
-	int i;
+	bool audio_heap_corrupted = FALSE;
 	ALSynConfig audio_cfg;
 
 #ifdef ENABLE_DMA
-	// Mark all DMA buffers as "old" so they get used.
-	for (i = 0; i < DMA_BUFF_COUNT; i++)
-		dma_table[i].age = 1;
+	// Initialize DMA
+	audio_init_dma();
 #endif
 
 	// Initialize audio heap
-	alHeapInit(&heap, (u8 *)AUDIO_HEAP_ADDR, AUDIO_HEAP_SIZE);
+	audio_heap_reset();
 
-	// Initialize buffers dependent on heap
-	/*for (i = 0; i < AUDIO_BUFF_COUNT; i++)
-		{ audio_buffers[i] = alHeapAlloc(&heap, 1, sizeof(s32) * AUDIO_BUFF_SIZE); }
-	for (i = 0; i < AUDIO_CL_COUNT; i++)
-		{ audio_cl[i] = (Acmd*)alHeapAlloc(&heap, 1, sizeof(Acmd) * AUDIO_CL_SIZE); }*/
-
-	for (i = 0; i < AUDIO_SEQ_COUNT; i++)
+	// Calculate audio frame size
+	audio_cfg.outputRate = osAiSetFrequency(AUDIO_BITRATE);
 	{
-		sequenceData[i] = alHeapAlloc(&heap, 1, AUDIO_SEQ_SIZE); // 40 kB
-		sequences[i] = alHeapAlloc(&heap, 1, sizeof(ALSeq));
+		// Formula used by audiomgr.c
+		f32 factor = (f32)audio_cfg.outputRate * 2 / 60.0F;
+		frame_size = (s32)factor;
+		if (frame_size < factor) frame_size++;
+		if (frame_size & 0xf) frame_size = (frame_size & ~0xf) + 0x10;
+
+		// Formula used by Thornmarked
+		// if (display_tvtype() == OS_TV_PAL) frame_size = (audio_cfg.outputRate + 25) / 50;
+		// else frame_size = (audio_cfg.outputRate * 1001 + 30000) / 60000;
+
+		// frame_size = (((audio_cfg.outputRate / 60) + 0xf) & ~0xf);
+
+		// Get min and max sizes
+		frame_min = frame_size - 16;
+		frame_max = frame_size + EXTRA_SAMPLES + 16;
 	}
 
-	// Load all sound banks
-	/*for (i = 0; i < 1; i++)
-	{
-		s32 size = banks[i].ctl_end - banks[i].ctl_start;
-		banks[i].sound_file = alHeapAlloc(&heap, 1, size);
-		load_from_rom(banks[i].sound_file, banks[i].ctl_start, size);
-
-		for (i = 0; i < 1; i++)
-		{
-			banks[i].sound_file->sounds[i] = (ALSound*)((u8*)banks[i].sound_file->sounds[i] + (u32)banks[i].sound_file);
-			_bnkfPatchSound(banks[i].sound_file->sounds[i], (u32)banks[i].sound_file, (u32)banks[i].tbl_start);
-			_bnkfPatchWaveTable(banks[i].sound_file->sounds[i]->wavetable, (u32)banks[i].sound_file, (u32)banks[i].tbl_start);
-		}
-
-		debug_printf("[Audio] Loaded sound bank to bank slot %d at address %p\n", i, banks[i].ctl_start);
-		debug_printf("[Audio] Total number of sounds in sound bank: %d", banks[i].sound_file->soundCount);
-	}*/
-
-	audio_cfg.outputRate = osAiSetFrequency(AUDIO_BITRATE);
+	// Set audio configuration
 	audio_cfg.maxVVoices = MAX_VOICES;
 	audio_cfg.maxPVoices = MAX_VOICES;
 	audio_cfg.maxUpdates = MAX_UPDATES;
@@ -506,7 +465,7 @@ static void audio_threadfunc(void *arg)
 #else
 	audio_cfg.dmaproc = NULL;
 #endif
-	audio_cfg.fxType = AL_FX_SMALLROOM;	// AL_FX_NONE
+	audio_cfg.fxType = AL_FX_CHORUS;	// AL_FX_NONE
 										// AL_FX_SMALLROOM
 										// AL_FX_BIGROOM
 										// AL_FX_ECHO
@@ -514,30 +473,41 @@ static void audio_threadfunc(void *arg)
 										// AL_FX_FLANGE
 										// AL_FX_CUSTOM
 
-	// Set audio framerate
-	set_frame_size(audio_cfg.outputRate);
-
 	alInit(&globals, &audio_cfg);
 	debug_printf("[Audio] Initialized audio driver\n");
 	debug_printf("[Audio] Bitrate: %d\n", AUDIO_BITRATE);
 
 	// Set up music and sound players
-	music_player = alHeapAlloc(&heap, 1, sizeof(ALSeqPlayer));
-	sound_player = alHeapAlloc(&heap, 1, sizeof(ALSndPlayer));
 	music_init();
 	sound_init();
 
 	while (1)
 	{
-		audio_handle_buffer();
-		audio_do_task();
-		audio_pop();
 
-		if (pendingSeq.romStart && alSeqpGetState(music_player) != AL_PLAYING)
+		scheduler->audio_notify = &msg_queue_trigger;
+		osRecvMesg(&msg_queue_trigger, NULL, OS_MESG_BLOCK);
+
+		samples_remaining = osAiGetLength() >> 2;
+
+		#ifdef ENABLE_DMA
+		// Clear and update DMA
+		audio_clear_dma();
+		#endif
+
+		if (audio_heap_corrupted)
 		{
-			music_play_seq(&pendingSeq);
-			pendingSeq.romStart = 0;
+			while (osViGetCurrentFramebuffer() == NULL) { ; }
+			crash_msg("Audio heap corrupted, cannot continue");
+
+			continue;
 		}
+
+		if (alHeapCheck(&heap) == 1 && !audio_heap_corrupted)
+			crash_msg("Audio heap corrupted, cannot continue");
+			// audio_heap_corrupted = TRUE;
+
+		audio_push();
+		audio_pop();
 	}
 }
 #endif
@@ -559,6 +529,8 @@ static void _bnkfPatchSound(ALSound* s, s32 offset, s32 table)
 	s->keyMap = (ALKeyMap*)((u8*)s->keyMap + offset);
 
 	s->wavetable = (ALWaveTable*)((u8*)s->wavetable + offset);
+
+	_bnkfPatchWaveTable(s->wavetable, offset, table);
 }
 
 static void _bnkfPatchWaveTable(ALWaveTable* w, s32 offset, s32 table)
@@ -594,59 +566,227 @@ static void sound_init()
 		.heap = &heap,
 	};
 
-	alSndpNew(sound_player, &sound_cfg);
+	// sound_player = audio_heap_alloc(sizeof(ALSndPlayer));
+	alSndpNew(&sound_player, &sound_cfg);
+
 	debug_printf("[Audio] Initialized sound player\n");
 }
-#endif
 
-void sound_set_bank(const char *name)
+static int sound_get_free_slot()
 {
-#ifdef ENABLE_AUDIO
-	int index = get_bank_index(name);
-	if (index == -1)
+	int i;
+	for (i = 0; i < MAX_SOUNDS; i++)
 	{
-		if (!banks[index].is_sound)
+		if (active_sounds[i].snd == NULL)
 		{
-			if (sound_bank != banks[index].sound_file)
-			{
-				sound_bank = banks[index].sound_file;
-				debug_printf("[Audio] Changed sound bank to %s (%d)\n", banks[index].name, index);
-				return;
-			}
-			else
-			{
-				debug_printf("[Audio] Sound bank is already set to %s (%d), cancelling...\n", banks[index].name, index);
-				return;
-			}
+			return i;
 		}
 	}
 
-	debug_printf("[Audio] Sound bank named %s not found, cancelling...\n", name);
+	return -1;
+}
+
+
+static Sound* sound_get(int index)
+{
+	int i;
+	for (i = 0; i < MAX_SOUNDS; i++)
+	{
+		if (!active_sounds[i].snd == NULL && active_sounds[i].snd_index == index)
+		{
+			return &active_sounds[i];
+		}
+	}
+
+	return NULL;
+}
+
+#endif
+
+void sound_play(SoundBank *sfx, int snd_index, int snd_slot)
+{
+#ifdef ENABLE_AUDIO
+	if (sfx != NULL)
+	{
+		// Get first empty sound slot
+		if (active_sounds[snd_slot].snd != NULL)
+		{
+			debug_printf("[Audio] Sound at slot %d is occupied, cancelling...\n", snd_slot);
+			return;
+		}
+
+		// Get first empty sound slot
+		if (snd_slot < 0)
+		{
+			snd_slot = sound_get_free_slot();
+			if (snd_slot < 0)
+			{
+				debug_printf("[Audio] All sound slots occupied, cancelling...\n");
+				return;
+			}
+		}
+
+		// Allocate ALSndId first, if failed then stop
+		active_sounds[snd_slot].id = alSndpAllocate(&sound_player, sfx->file->sounds[snd_index]);
+		if (active_sounds[snd_slot].id == -1)
+		{
+			debug_printf("[Audio] Invalid sound ID, cancelling...\n");
+			return;
+		}
+
+		// Set slot pointer to sound
+		active_sounds[snd_slot].snd = sfx->file->sounds[snd_index];
+		active_sounds[snd_slot].snd_index = snd_index;
+		active_sounds[snd_slot].playing = TRUE;
+
+		alSndpSetSound(&sound_player, active_sounds[snd_slot].id);
+		alSndpSetPitch(&sound_player, 1);
+		alSndpSetPan(&sound_player, 64);
+		alSndpSetVol(&sound_player, 30000);
+		alSndpPlay(&sound_player);
+
+		debug_printf("[Audio] Started sound %d belonging to %s in slot %d\n", snd_index, sfx->name, snd_slot);
+	}
 #endif
 }
 
-void sound_play(int index)
+void sound_stop(int snd_slot)
 {
 #ifdef ENABLE_AUDIO
-	if (sound_bank != NULL)
+	if (active_sounds[snd_slot].playing)
 	{
-		ALSound* snd = sound_bank->sounds[index];
-		ALSndId sndId = alSndpAllocate(sound_player, snd);
+		active_sounds[snd_slot].playing = FALSE;
 
-		if (sndId == -1)
-			crash_msg("Invalid sound ID");
-		alSndpSetSound(sound_player, sndId);
-		alSndpSetPitch(sound_player, 1);
-		alSndpSetPan(sound_player, 64);
-		alSndpSetVol(sound_player, 127);
-		alSndpPlay(sound_player);
+		alSndpSetSound(&sound_player, active_sounds[snd_slot].id);
+		alSndpStop(&sound_player);
+
+		debug_printf("[Audio] Stopped sound at slot %d\n", snd_slot);
 	}
+
+	active_sounds[snd_slot].snd = NULL;
+	active_sounds[snd_slot].snd_index = 0;
+#endif
+}
+
+// void sound_destroy(int index)
+// {
+// #ifdef ENABLE_AUDIO
+	// Sound *target = sound_get(index);
+	// if (target != NULL)
+	// {
+		// alSndpSetSound(&sound_player, target->id);
+		// alSndpStop(&sound_player);
+		// while (alSndpGetState(&sound_player) != AL_STOPPED) { ; }
+		// alSndpDeallocate(&sound_player, target->id);
+		// debug_printf("[Audio] Stopped sound %d\n", index);
+
+		// *target = (Sound){0};
+		// active_sounds--;
+	// }
+// #endif
+// }
+
+// void sound_stop_all()
+// {
+// #ifdef ENABLE_AUDIO
+	// int i = active_sounds - 1;
+	// while (1)
+	// {
+		// sound_destroy(i);
+		// i--;
+		// if (i < 0) break;
+	// }
+// #endif
+// }
+
+void sound_init_bank(SoundBank *sfx)
+{
+#ifdef ENABLE_AUDIO
+	if (strlen(sfx->name) <= 0)
+	{
+		debug_printf("[Audio] Music bank does not appear to have a name attributed to it, cancelling\n");
+		return;
+	}
+
+	if (!sfx->initialized)
+	{
+		int length = sfx->ctl_end - sfx->ctl_start;
+		sfx->file = audio_heap_alloc(length);
+		load_from_rom((char *) sfx->file, sfx->ctl_start, length);
+
+		// Patch each sound in CTL
+		{
+			int i;
+			for (i = 0; i < sfx->file->soundCount; i++)
+			{
+				sfx->file->sounds[i] = (ALSound*)((u8*)sfx->file->sounds[i] + (u32)sfx->file);
+				_bnkfPatchSound(sfx->file->sounds[i], (u32)sfx->file, (u32)sfx->tbl_start);
+			}
+		}
+
+		sfx->count = sfx->file->soundCount;
+		sfx->initialized = TRUE;
+		debug_printf("[Audio] Loaded sound bank %s from address %p of size %d bytes\n", sfx->name, sfx->ctl_start, length);
+	}
+#endif
+}
+
+void sound_set_bank(SoundBank *sfx)
+{
+#ifdef ENABLE_AUDIO
 #endif
 }
 
 /* =================================================== *
  *                     MUSIC PLAYER                    *
  * =================================================== */
+
+void sound_test()
+{
+	/*// Times measured in microseconds.
+	ALEnvelope sndenv = {
+		.attackTime = 0,
+		.releaseTime = 13400000,
+		.attackVolume = 67,
+		.decayVolume = 67,
+	};
+
+	// Not sure this does anything.
+	ALKeyMap keymap = {
+		.velocityMin = 66,
+		.velocityMax = 49,
+		.keyMin = 0,
+		.keyMax = 1,
+		.keyBase = 0,
+		.detune = 0,
+	};
+
+	// Poitner to the PCM data.
+	ALWaveTable wtable = {
+		.base = (u8 *)138176,
+		.len = 71478,
+		.type = AL_ADPCM_WAVE,
+		.flags = 1,
+	};
+
+	// Pointer to the sound itself.
+	ALSound snd = {
+		.envelope = &sndenv,
+		.keyMap = &keymap,
+		.wavetable = &wtable,
+		.samplePan = 64,
+		// .sampleVolume = 127,
+		.flags = 1,
+	};
+
+	// Allocate and play a sound.
+	ALSndId sndid = alSndpAllocate(&sound_player, &snd);
+	alSndpSetSound(&sound_player, sndid);
+	alSndpSetPitch(&sound_player, 1.0F);
+	alSndpSetPan(&sound_player, 64);
+	alSndpSetVol(&sound_player, 30000);
+	alSndpPlay(&sound_player);*/
+}
 
 #ifdef ENABLE_AUDIO
 static void music_init()
@@ -655,80 +795,218 @@ static void music_init()
 	{
 		.maxVoices = MAX_VOICES,
 		.maxEvents = MAX_EVENTS,
-		.maxChannels = MAX_CHANNELS,
+		.maxChannels = 16,
 		.heap = &heap,
-		.initOsc = 0,
-		.updateOsc = 0,
-		.stopOsc = 0,
 		#ifdef DEBUG_MODE
-		.debugFlags = NO_VOICE_ERR_MASK | NOTE_OFF_ERR_MASK | NO_SOUND_ERR_MASK,
+		// .debugFlags = NO_VOICE_ERR_MASK | NOTE_OFF_ERR_MASK | NO_SOUND_ERR_MASK,
 		#endif
 	};
 
-	alSeqpNew(music_player, &music_cfg);
+	// music_player = audio_heap_alloc(sizeof(ALSeqPlayer));
+	alSeqpNew(&music_player, &music_cfg);
+
 	debug_printf("[Audio] Initialized music player\n");
 }
 #endif
 
-void music_set_bank(char *ctl_start, char *ctl_end, char *tbl_start)
+void music_player_start()
 {
 #ifdef ENABLE_AUDIO
-	s32 size = ctl_end - ctl_start;
-	u8 bank_file[size];
-	u8 *bank_file_ptr = bank_file;
-	if (size > AUDIO_SEQ_SIZE)
+	if (alSeqpGetState(&music_player) != AL_PLAYING)
 	{
-		debug_printf("[Audio] Music bank size exceeds maximum allocated space, cancelling...\n");
-		return;
+		debug_printf("[Audio] Starting music player\n");
+		alSeqpPlay(&music_player);
 	}
-
-	load_from_rom(bank_file_ptr, ctl_start, size);
-
-	alBnkfNew((ALBankFile *)bank_file_ptr, (u8 *)tbl_start);
-	music_bank = ((ALBankFile *)bank_file_ptr)->bankArray[0];
-	debug_printf("[Audio] Loaded music bank from address %p\n", ctl_start);
-
-	alSeqpSetBank(music_player, music_bank);
-	return;
 #endif
 }
 
-void music_play_seq(SeqPlayEvent *seq)
+void music_player_stop()
 {
 #ifdef ENABLE_AUDIO
-	if (currentSeq == seq->romStart)
+	if (alSeqpGetState(&music_player) != AL_STOPPED)
 	{
-		return;
-	}
-	else if (alSeqpGetState(music_player) == AL_PLAYING)
-	{
-		alSeqpStop(music_player);
-		debug_printf("[Audio] Stopped playback of MIDI at address %p\n", currentSeq);
-		pendingSeq = *seq;
-	}
-	else
-	{
-		// Read and register the .mid as a sequence
-		sequenceLen[targetSeq] = seq->romEnd - seq->romStart;
-		load_from_rom((char *) sequenceData[targetSeq], seq->romStart, sequenceLen[targetSeq]);
-
-		alSeqNew(sequences[targetSeq], sequenceData[targetSeq], sequenceLen[targetSeq]);
-		alSeqNewMarker(sequences[targetSeq], &sequenceStart[targetSeq], seq->playbackStart);    
-		alSeqNewMarker(sequences[targetSeq], &sequenceLoopStart[targetSeq], seq->loopStart);
-		alSeqNewMarker(sequences[targetSeq], &sequenceEnd[targetSeq], seq->loopEnd);
-		alSeqpLoop(music_player, &sequenceLoopStart[targetSeq], &sequenceEnd[targetSeq], seq->loopCount);
-		alSeqpSetVol(music_player, (s16)(0x7fff * 1.0F));
-
-		if (seq->playbackStart)
-			alSeqSetLoc(sequences[targetSeq], &sequenceStart[targetSeq]);
-
-		// Play the newly-registered sequence
-		alSeqpSetSeq(music_player, sequences[targetSeq]);
-		alSeqpPlay(music_player);
-
-		debug_printf("[Audio] Started playback of MIDI at address %p\n", currentSeq);
-		currentSeq = seq->romStart;
-		targetSeq = (targetSeq + 1) % AUDIO_SEQ_COUNT;
+		debug_printf("[Audio] Stopping music player\n");
+		alSeqpStop(&music_player);
 	}
 #endif
 }
+
+void music_init_bank(InstBank *bank)
+{
+#ifdef ENABLE_AUDIO
+	if (strlen(bank->name) <= 0)
+	{
+		debug_printf("[Audio] Music bank does not appear to have a name attributed to it, cancelling\n");
+		return;
+	}
+
+	if (!bank->initialized)
+	{
+		int length = bank->ctl_end - bank->ctl_start;
+		bank->ctl_file = audio_heap_alloc(length);
+		load_from_rom((char *) bank->ctl_file, bank->ctl_start, length);
+
+		alBnkfNew(bank->ctl_file, (u8 *) bank->tbl_start);
+		bank->bank = bank->ctl_file->bankArray[0];
+
+		bank->initialized = TRUE;
+		debug_printf("[Audio] Loaded music bank %s from address %p of size %d bytes\n", bank->name, bank->ctl_start, length);
+	}
+#endif
+}
+
+void music_deinit_bank(InstBank *bank)
+{
+#ifdef ENABLE_AUDIO
+	if (strlen(bank->name) <= 0)
+	{
+		debug_printf("[Audio] Music bank does not appear to have a name attributed to it, cancelling\n");
+		return;
+	}
+
+	if (bank->initialized)
+	{
+		if (music_bank_current == bank->ctl_start)
+		{
+			alSeqpSetBank(&music_player, 0);
+			music_bank_current = 0;
+		}
+
+		bank->bank = NULL;
+		audio_heap_dealloc(bank->ctl_file, sizeof(bank->ctl_file));
+		bank->ctl_file = NULL;
+
+		bank->initialized = FALSE;
+		debug_printf("[Audio] Unloaded music bank %s from RAM\n", bank->name);
+	}
+#endif
+}
+
+void music_set_bank(InstBank *bank)
+{
+#ifdef ENABLE_AUDIO
+	if (!bank->initialized) return;
+
+	// Point sequence player's bank to sequence_bank
+    alSeqpSetBank(&music_player, bank->ctl_file->bankArray[0]);
+
+	debug_printf("[Audio] Configured current music bank to %s at address %p\n", bank->name, bank->ctl_start);
+	music_bank_current = bank->ctl_start;
+#endif
+}
+
+void midi_set_tempo(MIDI *mid, int tempo)
+{
+	mid->tempo = tempo;
+}
+
+void midi_set_markers(MIDI *mid, int playback_start, int loop_start, int loop_end, int loop_count)
+{
+	mid->playback_start = playback_start;
+	mid->loop_start = loop_start;
+	mid->loop_end = loop_end;
+	mid->loop_count = loop_count;
+}
+
+void midi_send_event(long ticks, u8 status, u8 byte1, u8 byte2)
+{
+#ifdef ENABLE_AUDIO
+	alSeqpSendMidi(&music_player, ticks, status, byte1, byte2);
+#endif
+}
+
+void midi_init(MIDI *mid)
+{
+#ifdef ENABLE_AUDIO
+	if (strlen(mid->name) <= 0)
+	{
+		debug_printf("[Audio] MIDI does not appear to have a name attributed to it, cancelling\n");
+		return;
+	}
+
+	if (!mid->initialized)
+	{
+		int length = mid->mid_end - mid->mid_start;
+		mid->data = audio_heap_alloc(length);
+		load_from_rom((char *) mid->data, mid->mid_start, length);
+
+		mid->sequence = audio_heap_alloc(sizeof(ALSeq));
+		alSeqNew(mid->sequence, mid->data, length);
+
+		// Set loop markers
+		alSeqNewMarker(mid->sequence, &mid->m_loop_start, mid->loop_start);
+		alSeqNewMarker(mid->sequence, &mid->m_loop_end, mid->loop_end);
+
+		// Set playback start marker
+		alSeqNewMarker(mid->sequence, &mid->m_playback_start, mid->playback_start);
+		if (mid->playback_start > 0)
+			alSeqSetLoc(mid->sequence, &mid->m_playback_start);
+
+		mid->initialized = TRUE;
+		debug_printf("[Audio] Loaded MIDI track %s from address %p of size %d bytes\n", mid->name, mid->mid_start, length);
+	}
+#endif
+}
+
+void music_set_midi(MIDI *mid)
+{
+#ifdef ENABLE_AUDIO
+	if (!mid->initialized) return;
+
+	// Point music player to sequence
+    alSeqpSetSeq(&music_player, mid->sequence);
+
+	// Set tempo
+	alSeqpSetTempo(&music_player, mid->tempo);
+
+	// Set loop
+	alSeqpLoop(&music_player, &mid->m_loop_start, &mid->m_loop_end, mid->loop_count);
+
+	debug_printf("[Audio] Configured current MIDI track to %s (%p)\n", mid->name, mid->mid_start);
+	midi_current = mid->mid_start;
+
+	// Play the newly-registered sequence
+	// music_player_start();
+#endif
+}
+
+// #else
+
+// void init_audio(Scheduler *sc)
+// { ; }
+// void audio_close()
+// { ; }
+// void audio_heap_reset()
+// { ; }
+
+// void music_init_bank(InstBank *bank)
+// { ; }
+// void music_set_bank(InstBank *bank)
+// { ; }
+// void midi_set_tempo(MIDI *mid, int tempo)
+// { ; }
+// void midi_set_markers(MIDI *mid, int playback_start, int loop_start, int loop_end, int loop_count)
+// { ; }
+// void midi_init(MIDI *mid)
+// { ; }
+// void music_set_midi(MIDI *mid)
+// { ; }
+// void music_player_start()
+// { ; }
+// void music_player_stop()
+// { ; }
+
+// void sound_init_bank(SoundBank *sfx)
+// { ; }
+// void sound_set_bank(SoundBank *sfx)
+// { ; }
+// void sound_play(SoundBank *sfx, int snd_index, int snd_slot)
+// { ; }
+// void sound_stop(int snd_slot)
+// { ; }
+// void sound_destroy(int index)
+// { ; }
+// void sound_stop_all()
+// { ; }
+
+// #endif

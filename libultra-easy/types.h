@@ -1,26 +1,6 @@
 #ifndef __TYPES_H__
 #define __TYPES_H__
 
-typedef enum joypad_button
-{
-	A = A_BUTTON,
-	B = B_BUTTON,
-	Start = START_BUTTON,
-	Up = U_JPAD,
-	Down = D_JPAD,
-	Left = L_JPAD,
-	Right = R_JPAD,
-	C_Up = U_CBUTTONS,
-	C_Down = D_CBUTTONS,
-	C_Left = L_CBUTTONS,
-	C_Right = R_CBUTTONS,
-	L = L_TRIG,
-	R = R_TRIG,
-	Z = Z_TRIG,
-} Button;
-
-#define RGBA32(r,g,b,a) ((r << 24) | (g << 16) | (b << 8) | a)
-
 /* ================================= */
 /*              Helpers              */
 /* ================================= */
@@ -33,6 +13,8 @@ typedef int bool;
 #define round(n) (n < 0.0F ? ((s32)((f64)n - 0.5F)) : ((s32)((f64)n + 0.5F)))
 
 #define array_size(x) (sizeof(x) / sizeof(*(x)))
+
+#define RGBA32(r,g,b,a) ((r << 24) | (g << 16) | (b << 8) | a)
 
 /* ================================= */
 /*            3D Graphics            */
@@ -66,8 +48,6 @@ typedef struct {
 /* ================================= */
 /*            2D Graphics            */
 /* ================================= */
-
-#include <PR/gs2dex.h>
 
 enum sprite_img_type {
 	SPRITE_RGBA16,

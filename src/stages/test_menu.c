@@ -26,9 +26,6 @@
 #include "strings.h"
 #include "stages.h"
 
-/* [OBJECTS]
-========================================= */
-
 /* [ASSETS]
 ========================================= */
 #include "assets/sprites/white.h"
@@ -57,6 +54,8 @@ static sprite_t fade;
  * ============================== */
 void test_menu_init()
 {
+	extern sound_test();
+
 	display_set(-1);
 	if (selected_stage < 0)
 		selected_stage = offset;
@@ -83,27 +82,26 @@ void test_menu_init()
  * ============================== */
 void test_menu_update()
 {
-	int max_stages = 6;
+	int max_stages = 7;
 
-	if (controller[0].button == R_JPAD || controller[0].stick_x >= 10)
+	if (joypad_button(DPAD_RIGHT, 0) || joypad_stick(0).x >= 10)
 		selected_stage += 1;
-	if (controller[0].button == L_JPAD || controller[0].stick_x <= -10)
+	if (joypad_button(DPAD_LEFT, 0) || joypad_stick(0).x <= -10)
 		selected_stage -= 1;
 	if (selected_stage < 0)
 		selected_stage = max_stages - 1;
 	if (selected_stage >= max_stages)
 		selected_stage = 0 + offset;
 
-	if (controller[0].button == R_TRIG)
-		language += 1;
-	if (controller[0].button == L_TRIG)
+	if (joypad_button(L, 0))
 		language -= 1;
+	if (joypad_button(R, 0))
+		language += 1;
 
 	change_language();
 
-	if (controller[0].button == A_BUTTON)
+	if (joypad_button(A, 0))
 		request_stage_change(stages[selected_stage].name);
-		// request_stage_change("7");
 
 	if (fade_opacity <= 0)
 	{

@@ -1,14 +1,7 @@
 #include <ultra64.h>
 #include <stdarg.h>
 
-#include "config/global.h"
-#include "config/video.h"
-
-#include "libultra-easy/types.h"
-#include "libultra-easy/display.h"
-#include "libultra-easy/fault.h"
-#include "libultra-easy/gfx.h"
-#include "libultra-easy/rcp.h"
+#include "libultra-easy.h"
 
 /* =============== ASSETS =============== */
 
@@ -103,79 +96,60 @@ void console_puts(const char *txt, ...)
 
 /* =========== DRAWING (RAW) ============ */
 
-void clear_screen_raw(FrameBuffer *framebuffer)
+static FrameBuffer* console_fb = NULL;
+
+bool console_set_fb()
 {
-	if (framebuffer == NULL)
-	{
-		int fb;
+	if (console_fb == NULL) console_fb = get_framebuffer(osViGetNextFramebuffer());
+	if (console_fb == NULL) console_fb = get_framebuffer(osViGetCurrentFramebuffer());
+	if (console_fb == NULL) return FALSE;
 
-		for (fb = 0; fb < CFB_COUNT; fb++)
-		{
-			bzero(framebuffers[fb].address, framebuffers[fb].size);
-		}
-	}
+	osViBlack(FALSE);
+	osViSetSpecialFeatures(OS_VI_GAMMA_OFF);
+	osViSwapBuffer(console_fb->address);
 
-	else
-	{
-		bzero(framebuffer->address, framebuffer->size);
-	}
+	return TRUE;
 }
 
-void tint_screen_raw(FrameBuffer *framebuffer)
+void clear_screen_raw()
 {
-	if (framebuffer == NULL)
+	#ifdef VIDEO_32BIT
+	u32 color = 0xFF000000;
+	#else
+	u16 color = 0xFF000000;
+	#endif
+
+	bcopy(&color, console_fb->address, console_fb->size);
+	osWritebackDCache(console_fb->address, console_fb->size);
+}
+
+void tint_screen_raw()
+{
+	int i;
+
+	// Set beginning CFB pointer
+	#ifdef VIDEO_32BIT
+	u32 *ptr = (u32 *)
+	#else
+	u16 *ptr = (u16 *) // "u32 *ptr = (u32 *)" increases the spacing of each pixel, so not recommended
+	#endif
+	console_fb->address;
+
+	// Write color directly
+	for (i = 0; i < console_fb->size; i++)
 	{
-		int i, fb;
-
-		for (fb = 0; fb < CFB_COUNT; fb++)
-		{
-			// Set beginning CFB pointer
-			#ifdef VIDEO_32BIT
-			u32 *ptr = (u32 *)
-			#else
-			u16 *ptr = (u16 *) // "u32 *ptr = (u32 *)" increases the spacing of each pixel, so not recommended
-			#endif
-			framebuffers[fb].address;
-
-			// Write color directly
-			for (i = 0; i < framebuffers[fb].size; i++)
-			{
-			#ifdef VIDEO_32BIT
-				*ptr = 0x00000000;
-			#else
-				*ptr = (((*ptr & 0xe738) >> 2) | 1);
-			#endif
-				ptr++;
-			}
-		}
-	}
-
-	else
-	{
-		int i;
-
-		// Set beginning CFB pointer
 		#ifdef VIDEO_32BIT
-		u32 *ptr = (u32 *)
+		*ptr = 0x00000000;
 		#else
-		u16 *ptr = (u16 *) // "u32 *ptr = (u32 *)" increases the spacing of each pixel, so not recommended
+		*ptr = (((*ptr & 0xe738) >> 2) | 1);
 		#endif
-		framebuffer->address;
-
-		// Write color directly
-		for (i = 0; i < display_width() * display_height(); i++)
-		{
-			#ifdef VIDEO_32BIT
-			*ptr = 0x00000000;
-			#else
-			*ptr = (((*ptr & 0xe738) >> 2) | 1);
-			#endif
-			ptr++;
-		}
+		ptr++;
 	}
+
+	osWritebackDCache(console_fb->address, console_fb->size);
 }
 
-static void draw_glyph_raw(Font *font, int g, int x, int y, FrameBuffer *framebuffer)
+static void draw_glyph_raw(Font *font, int g, int x, int y)
 {
 	// Set font helper variables
 	int w = g < 0 ? 0                           : font->glyphs[g].width;
@@ -183,82 +157,42 @@ static void draw_glyph_raw(Font *font, int g, int x, int y, FrameBuffer *framebu
 	int i = g < 0 ? font->glyphs[0].glyph_index : font->glyphs[g].glyph_index;
 	// int scale = 1;
 
-	if (framebuffer == NULL)
+	// Set pointer X,Y coordinates
+	int ptr_x, ptr_y;
+
+	// Set beginning CFB pointer
+	#ifdef VIDEO_32BIT
+	u32 black = 0x00000000;
+	u32 white = 0xFFFFFFFF;
+	u32 *ptr = (u32 *)
+	#else
+	u16 black = 0x0000; // (((*ptr & 0xe738) >> 2) | 1)
+	u16 white = 0xFFFF;
+	u16 *ptr = (u16 *) // "u32 *ptr = (u32 *)" increases the spacing of each pixel, so not recommended
+	#endif
+	console_fb->address + (y * display_width()) + x;
+
+	// Write color directly
+	for (ptr_y = y; ptr_y < y + h; ptr_y++)
 	{
-		int fb;
-
-		for (fb = 0; fb < CFB_COUNT; fb++)
+		for (ptr_x = x; ptr_x < x + w; ptr_x++)
 		{
-			// Set pointer X,Y coordinates
-			int ptr_x, ptr_y;
+			int chr_x = ptr_x - x;
+			int chr_y = ptr_y - y;
+			u8 *chr = (u8 *)(font->bmp + i * (w * h));
 
-			// Set beginning CFB pointer
-			#ifdef VIDEO_32BIT
-			u32 black = 0x00000000;
-			u32 white = 0xFFFFFFFF;
-			u32 *ptr = (u32 *)
-			#else
-			u16 black = 0x0000; // (((*ptr & 0xe738) >> 2) | 1)
-			u16 white = 0xFFFF;
-			u16 *ptr = (u16 *) // "u32 *ptr = (u32 *)" increases the spacing of each pixel, so not recommended
-			#endif
-			framebuffers[fb].address + (y * display_width()) + x;
-
-			// Write color directly
-			for (ptr_y = y; ptr_y < y + h; ptr_y++)
-			{
-				for (ptr_x = x; ptr_x < x + w; ptr_x++)
-				{
-					int chr_x = ptr_x - x;
-					int chr_y = ptr_y - y;
-					u8 *chr = (u8 *)(font->bmp + i * (w * h));
-
-					*ptr = i >= 0 && chr[chr_x + (w * chr_y)] == 0x01
-						 ? white : black;
-					ptr++;
-				}
-
-				ptr += display_width() - w;
-			}
+			*ptr = i >= 0 && chr[chr_x + (w * chr_y)] == 0x01
+				 ? white : black;
+			ptr++;
 		}
+
+		ptr += display_width() - w;
 	}
-	else
-	{
-		// Set pointer X,Y coordinates
-		int ptr_x, ptr_y;
 
-		// Set beginning CFB pointer
-		#ifdef VIDEO_32BIT
-		u32 black = 0x00000000;
-		u32 white = 0xFFFFFFFF;
-		u32 *ptr = (u32 *)
-		#else
-		u16 black = 0x0000; // (((*ptr & 0xe738) >> 2) | 1)
-		u16 white = 0xFFFF;
-		u16 *ptr = (u16 *) // "u32 *ptr = (u32 *)" increases the spacing of each pixel, so not recommended
-		#endif
-		framebuffer->address + (y * display_width()) + x;
-
-		// Write color directly
-		for (ptr_y = y; ptr_y < y + h; ptr_y++)
-		{
-			for (ptr_x = x; ptr_x < x + w; ptr_x++)
-			{
-				int chr_x = ptr_x - x;
-				int chr_y = ptr_y - y;
-				u8 *chr = (u8 *)(font->bmp + i * (w * h));
-
-				*ptr = i >= 0 && chr[chr_x + (w * chr_y)] == 0x01
-					 ? white : black;
-				ptr++;
-			}
-
-			ptr += display_width() - w;
-		}
-	}
+	osWritebackDCache(console_fb->address, console_fb->size);
 }
 
-static void draw_text_raw(int x, int y, const char *txt, Font font, FrameBuffer *fb)
+static void draw_text_raw(int x, int y, const char *txt, Font font)
 {
 	int text_x = x * font.glyphs[0].width, text_y = y * font.glyphs[0].height;
 	int i = 0;
@@ -291,7 +225,7 @@ static void draw_text_raw(int x, int y, const char *txt, Font font, FrameBuffer 
 			g = language == 6 ? -1 : 0;
 
 			draw:
-			draw_glyph_raw(&font, g, x, y, fb);
+			draw_glyph_raw(&font, g, x, y);
 
 			if (found) x += font.glyphs[g].width;
 			if (x > display_width() - text_x) { x = text_x; y += font.glyphs[g].height; }
@@ -325,14 +259,15 @@ void console_draw_dl()
 	);
 }
 
-void console_draw_raw(FrameBuffer *fb)
+void console_draw_raw()
 {
 	draw_text_raw
 	(
 		language == 6 ? 1 : 2,
 		1,
 		buf,
-		language == 6 ? rm2003_ja : terminus,
-		fb
+		language == 6 ? rm2003_ja : terminus
 	);
+
+	if (console_fb != NULL) osViSwapBuffer(console_fb->address);
 }

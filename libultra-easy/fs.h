@@ -8,11 +8,11 @@
 
 	#define SEGMENT_START(name) _ ## name ## SegmentRomStart
 	#define SEGMENT_END(name) _ ## name ## SegmentRomEnd
-	#define SEGMENT_SIZE(name) _ ## name ## SegmentRomEnd - _ ## name ## SegmentRomStart
+	#define SEGMENT_SIZE(name) (u32)_ ## name ## SegmentRomEnd - (u32)_ ## name ## SegmentRomStart
 
 	void init_reader();
 	void load_segment(char *offset, char *start, char *end);
-	void load_from_rom(void *ram_addr, void *rom_addr, u32 size);
+	void load_from_rom(void *ram_addr, char *rom_addr, int size);
 	void load_all_segments();
 	u8 get_rom_region();
 

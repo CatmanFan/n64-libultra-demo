@@ -66,6 +66,11 @@ void gfx_request_render(void (*func)(), bool usecpu, bool swapbuffer);
 FrameBuffer framebuffers[3];
 
 /**
+ * @brief Retrieves an active framebuffer from its address.
+ */
+FrameBuffer* get_framebuffer(void *address);
+
+/**
  * @brief The number of currently active framebuffers.
  */
 int num_active_framebuffers();

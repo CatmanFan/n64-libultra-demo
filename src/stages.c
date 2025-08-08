@@ -20,6 +20,7 @@ STAGE_DECLARE(test_menu)
 STAGE_DECLARE(test_00)
 STAGE_DECLARE(test_01)
 STAGE_DECLARE(test_02)
+STAGE_DECLARE(test_03)
 STAGE_DECLARE(psx2n64_00)
 STAGE_DECLARE(psx2n64_01)
 
@@ -36,6 +37,7 @@ StageInfo stages[] =
 	STAGE_DEFINE_NOD(1, "test_00", test_00),
 	STAGE_DEFINE_NOD(2, "test_01", test_01),
 	STAGE_DEFINE_NOD(3, "test_02", test_02),
+	STAGE_DEFINE_NOD(4, "test_03", test_03),
 	STAGE_DEFINE_NOD(10, "psx2n64_00", psx2n64_00),
 	STAGE_DEFINE(11, "psx2n64_01", psx2n64_01),
 };

@@ -3,7 +3,7 @@
 
 	void init_fault();
 	void crash();
-	void crash_msg(char *msg);
+	void crash_msg(const char *txt, ...);
 
 	/*
 	#define crash() { \

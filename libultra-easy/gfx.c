@@ -6,21 +6,17 @@
  *                       MACROS                        *
  * =================================================== */
 
-#ifdef VIDEO_32BIT
-	#define FB_DEPTH		u32
-	#define ZBUFFER_ADDR	RAMBANK_8 + RAMBANK_SIZE - CFB_SIZE
-	#define CFB_SIZE		(SCREEN_W_HD*SCREEN_H_HD*4) // HD minimum size
-#else
-	#define FB_DEPTH 		u16
-	#define ZBUFFER_ADDR	RAMBANK_4 + RAMBANK_SIZE - CFB_SIZE
-	#define CFB_SIZE		(SCREEN_W_HD*SCREEN_H_HD*2) // HD minimum size
-#endif
-
 #if (CFB_COUNT > 3 || CFB_COUNT <= 1)
 	#error Invalid framebuffer count
 #endif
 
 #define MSG_SIZE (CFB_COUNT + 1)
+
+#ifdef VIDEO_32BIT
+	#define FB_DEPTH		u32
+#else
+	#define FB_DEPTH 		u16
+#endif
 
 /* =================================================== *
  *                 FUNCTION PROTOTYPES                 *
@@ -57,10 +53,6 @@ static OSMesg		msg_rdp;
 static OSMesgQueue	msg_queue_rdp;
 
 static Scheduler *scheduler;
-
-#define CFB1_ADDR		ZBUFFER_ADDR - (CFB_SIZE*1)
-#define CFB2_ADDR		ZBUFFER_ADDR - (CFB_SIZE*2)
-#define CFB3_ADDR		ZBUFFER_ADDR - (CFB_SIZE*3)
 
 /* =================================================== *
  *              GRAPHICS TASK FUNCTIONING              *
@@ -132,6 +124,7 @@ static void gfx_threadfunc(void *arg)
 	osCreateMesgQueue(&msg_queue_vsync, &msg_vsync, 1);
 	osCreateMesgQueue(&msg_queue_rdp, &msg_rdp, 1);
 	osSetEventMesg(OS_EVENT_DP, &msg_queue_rdp, NULL);
+
 	msg_index = 0;
 
 	while (1)
@@ -242,7 +235,7 @@ static void gfx_render(FrameBuffer *fb, void (*func)())
 	scheduler->task_gfx = l_task.task;
 
 	#if DEBUG_MODE
-		osSetTimer(&rcp_timer, OS_USEC_TO_CYCLES(SEC_TO_USEC(3)), 0, &scheduler->queue, (OSMesg)SC_MSG_RCPDEAD);
+		osSetTimer(&rcp_timer, OS_USEC_TO_CYCLES(SEC_TO_USEC(RCP_WAIT)), 0, &scheduler->event_queue, (OSMesg)SC_MSG_RCPDEAD);
 	#endif
 	debug_printf("[GFX] Beginning render task at framebuffer %d\n", fb->id);
 	osSpTaskStart(scheduler->task_gfx);
@@ -302,6 +295,25 @@ static void gfx_create_fb(void *address)
 	active_framebuffers++;
 }
 
+FrameBuffer* get_framebuffer(void *address)
+{
+	int i;
+	for (i = 0; i < active_framebuffers; i++)
+	{
+		if (framebuffers[i].address == address)
+		{
+			return &framebuffers[i];
+		}
+	}
+
+	return NULL;
+}
+
+int num_active_framebuffers()
+{
+	return active_framebuffers;
+}
+
 
 /* =================================================== *
  *              INTERACTION WITH SCHEDULER             *
@@ -310,11 +322,6 @@ static void gfx_create_fb(void *address)
 bool is_framebuffer_ready()
 {
 	return fb_last != NULL;
-}
-
-int num_active_framebuffers()
-{
-	return active_framebuffers;
 }
 
 FrameBuffer* return_ready_framebuffer()

@@ -14,42 +14,25 @@
 #include "libultra-easy/rcp.h"
 // #include "libultra-easy/gfx_2d.h"
 // #include "libultra-easy/gfx_3d.h"
-#include "libultra-easy/fs.h"
 #include "libultra-easy/time.h"
 
 /* === Custom libraries === */
 #include "stages.h"
 #include "strings.h"
 
-/* [ASSETS]
-========================================= */
-
-/* [SEGMENTS]
-========================================= */
-SEGMENT_DECLARE(bgm_sce_logo_0)
-
 /* [VARIABLES]
 ========================================= */
 static u8 header[0x30];
 static u8 *header_ptr;
-static u8 *bgm_ptr;
 static bool isReadHeader;
-
 
 /* [STATIC FUNCTIONS]
 ========================================= */
 static void read_header()
 {
 	header_ptr = header;
-	load_from_rom(header_ptr, (u8 *)0, 0x30);
+	load_from_rom(header_ptr, (char *)0x00, 0x30);
 	isReadHeader = header_ptr[0x2B] != 0;
-}
-
-static void read_bgm()
-{
-	u8 bgm[SEGMENT_SIZE(bgm_sce_logo_0)];
-	bgm_ptr = bgm;
-	load_from_rom(bgm_ptr, SEGMENT_START(bgm_sce_logo_0), SEGMENT_SIZE(bgm_sce_logo_0));
 }
 
 /* [MAIN FUNCTIONS]
@@ -61,7 +44,6 @@ static void read_bgm()
 void test_02_init()
 {
 	read_header();
-	read_bgm();
 }
 
 /* ==============================
@@ -70,7 +52,7 @@ void test_02_init()
  * ============================== */
 void test_02_update()
 {
-	if (controller[0].button == B_BUTTON)
+	if (joypad_button(B, 0))
 		request_stage_change("test_menu");
 }
 
@@ -106,7 +88,7 @@ void test_02_render()
 		}*/
 
 		console_puts(strings[11], code);
-		
+
 		switch (header_ptr[0x2E])
 		{
 			default:
