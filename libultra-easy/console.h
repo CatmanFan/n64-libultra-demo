@@ -3,9 +3,10 @@
 
 	#include "libultra-easy/gfx.h"
 
-	extern void console_clear();
-	extern void console_puts(const char *txt, ...);
-	extern void console_draw_dl();
-	extern void console_draw_raw(FrameBuffer *fb);
+	void console_clear();
+	void console_puts(const char *txt, ...);
+	void console_draw_dl();
+	void console_draw_raw();
+	bool console_set_fb();
 
 #endif

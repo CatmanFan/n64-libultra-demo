@@ -38,6 +38,7 @@ static float scale;
 // static int obj_type;
 // static int prev_obj_type;
 
+// Message timer
 static f64 msg_time_marker;
 static f64 msg_timer;
 static bool msg_alt;
@@ -84,7 +85,7 @@ void test_00_init()
 
 	console_clear();
 
-	sound_set_bank("sample");
+	// sound_set_bank("sample");
 	// The sound effects bank is now the default bank
 
 	// Now that I played the song, the sound effects bank has been reverted back to default
@@ -92,8 +93,8 @@ void test_00_init()
 	// the need for MusPtrBankSetSingle.
 
 	time_reset();
-	msg_timer = 5.0;
-	msg_time_marker = 5.0;
+	msg_timer = 10.0;
+	msg_time_marker = 10.0;
 	msg_alt = FALSE;
 }
 
@@ -103,49 +104,49 @@ void test_00_init()
  * ============================== */
 void test_00_update()
 {
-	camera.x += controller[0].stick_x;
-	camera.y -= controller[0].stick_y;
-	if (controller[0].button == A_BUTTON)
+	camera.x += joypad_stick(0).x;
+	camera.y -= joypad_stick(0).y;
+	if (joypad_button(A, 0))
 		camera.z-=8;
-	else if (controller[0].button == B_BUTTON)
+	else if (joypad_button(B, 0))
 		camera.z+=8;
 
-	/*if (controller[0].button == U_CBUTTONS)
+	/*if (joypad_button(C_UP, 0))
 		fov+=0.2;
-	else if (controller[0].button == D_CBUTTONS)
+	else if (joypad_button(C_DOWN, 0))
 		fov-=0.2;*/
 
-	if (controller[0].button == L_CBUTTONS)
+	if (joypad_button(C_LEFT, 0))
 		globe.pos.z-=8;
-	else if (controller[0].button == R_CBUTTONS)
+	else if (joypad_button(C_RIGHT, 0))
 		globe.pos.z+=8;
-	if (controller[0].button == U_CBUTTONS)
+	if (joypad_button(C_UP, 0))
 		globe.pos.y+=8;
-	else if (controller[0].button == D_CBUTTONS)
+	else if (joypad_button(C_DOWN, 0))
 		globe.pos.y-=8;
 
-	if (controller[0].button == U_JPAD)
+	if (joypad_button(DPAD_UP, 0))
 		obj.rot.x-=2;
-	else if (controller[0].button == D_JPAD)
+	else if (joypad_button(DPAD_DOWN, 0))
 		obj.rot.x+=2;
-	if (controller[0].button == L_JPAD)
+	if (joypad_button(DPAD_LEFT, 0))
 		obj.rot.y-=2;
-	else if (controller[0].button == R_JPAD)
+	else if (joypad_button(DPAD_RIGHT, 0))
 		obj.rot.y+=2;
 
-	/*if (controller[0].button == L_TRIG)
+	/*if (joypad_button(L, 0))
 		obj_type -= 1;
-	else if (controller[0].button == R_TRIG)
+	else if (joypad_button(R, 0))
 		obj_type += 1;
 	if (obj_type > 1) obj_type = 0;
 	if (obj_type < 0) obj_type = 1;
 	prev_obj_type = obj_type;*/
 
-	if (controller[0].button == START_BUTTON)
+	if (joypad_button(START, 0))
 	{
-		sound_set_bank("sample");
-		sound_play(0);
-		// crash();
+		// sound_set_bank("sample");
+		// sound_play(0);
+		crash();
 	}
 
 	// ==================================================
@@ -153,7 +154,6 @@ void test_00_update()
 	globe.rot.y+=1;
 
 	msg_timer = msg_time_marker - time_current();
-
 	if (msg_timer < 0.0)
 	{
 		msg_alt = !msg_alt;

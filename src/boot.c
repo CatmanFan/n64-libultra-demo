@@ -74,7 +74,11 @@ static void main(void *arg)
 
 	// Initialize boot stage
 	debug_printf("[Boot] Initializing game engine\n");
+	#ifdef ENABLE_AUDIO
+	change_stage(4); // 0
+	#else
 	change_stage(0);
+	#endif
 
 	// Start permanent loop
 	while (1)

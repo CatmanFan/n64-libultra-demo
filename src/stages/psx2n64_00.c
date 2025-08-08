@@ -10,10 +10,10 @@
 #include "libultra-easy/controller.h"
 #include "libultra-easy/display.h"
 #include "libultra-easy/fault.h"
+#include "libultra-easy/fs.h"
 #include "libultra-easy/rcp.h"
 #include "libultra-easy/gfx_2d.h"
 #include "libultra-easy/gfx_3d.h"
-#include "libultra-easy/fs.h"
 #include "libultra-easy/time.h"
 
 /* === Custom libraries === */
@@ -33,9 +33,6 @@
 
 /* [SEGMENTS]
 ========================================= */
-SEGMENT_DECLARE(bgmCtl_playstation)
-SEGMENT_DECLARE(bgmTbl_playstation)
-SEGMENT_DECLARE(bgm_sce_logo_0)
 
 /* [VARIABLES]
 ========================================= */
@@ -77,8 +74,6 @@ static simpleObj diamond_face_2 = { .dl = sce_diamond_mesh };
 
 /* [MAIN FUNCTIONS]
 ========================================= */
-#include <PR/os_internal_error.h>
-#include "config/global.h"
 
 /* ==============================
  * Initializes stage.
@@ -153,12 +148,6 @@ void psx2n64_00_init()
 	sce_text_1.a = sce_text_0.a = 0;
 	sce_text_1.scale_x = sce_text_0.scale_x = 1.0 / scale_2d;
 	sce_text_1.scale_y = sce_text_0.scale_y = 1.0 / scale_2d;
-
-	if (__osGetCurrFaultedThread() != NULL && osGetThreadId(__osGetCurrFaultedThread()) == ID_AUDIO)
-		crash_msg("Cannot continue, audio failed");
-
-	music_load_bank(playstation);
-	music_play(bgm_sce_logo_0, 0, 0, 0, 0);
 }
 
 /* ==============================
@@ -225,9 +214,6 @@ void psx2n64_00_update()
 	}
 }
 
-extern Acmd *cl_start, *cl_end;
-extern s32 cl_length;
-
 /* ==============================
  * Renders frame.
  * ============================== */
@@ -270,10 +256,6 @@ void psx2n64_00_render()
 
 	#ifdef VERBOSE
 	console_clear();
-	// console_puts("Audio command list length dynamic: %d, %d", cl_end - cl_start, cl_length * sizeof(Acmd));
-	// console_puts("Audio command list length direct: %d", cl_length);
-	// console_puts("Audio command list type size: %d", sizeof(Acmd));
-
 	console_puts("Stage time: %0.2f / %0.2f", time_elapsed, time_end);
 	console_puts("Next marker in %0.2f\n", (time_elapsed < time_1 ? time_1 : time_elapsed < time_2 ? time_2 : time_elapsed < time_3 ? time_3 : time_elapsed < time_3 + time_4 ? time_3 + time_4 : time_end) - time_elapsed);
 	console_puts("FPS: %2d", fps());

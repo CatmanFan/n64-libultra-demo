@@ -1,13 +1,14 @@
 #ifndef __DISPLAY_H__
 #define __DISPLAY_H__
 
-	extern void display_off();
-	extern void display_on();
-	extern void display_set(int highres);
-	extern int display_width();
-	extern int display_height();
-	extern bool display_highres();
-	extern float display_yscale();
-	extern int display_tvtype();
+	void display_off();
+	void display_on();
+	void display_set(int highres);
+	int display_width();
+	int display_height();
+	bool display_highres();
+	float display_yscale();
+	int display_tvtype();
+	int display_framerate();
 
 #endif

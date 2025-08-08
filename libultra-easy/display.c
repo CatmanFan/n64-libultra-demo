@@ -47,6 +47,14 @@ void display_on()
 	scheduler.display = TRUE;
 }
 
+int display_framerate()
+{
+	if (display_tvtype() == 0)
+		return 50;
+	else
+		return 60;
+}
+
 int display_tvtype()
 {
 	#if defined VIDEO_TYPE && (VIDEO_TYPE >= 0 && VIDEO_TYPE <= 2)

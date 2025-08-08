@@ -6,16 +6,16 @@
  *                 FUNCTION PROTOTYPES                 *
  * =================================================== */
 
-static void scheduler_threadfunc(void *arg) __attribute__ ((noreturn));
-static void scheduler_vsync();
-static void scheduler_prenmi();
+static void			scheduler_threadfunc(void *arg) __attribute__ ((noreturn));
+static void			scheduler_video_pop();
+static void			scheduler_prenmi();
 
 /* =================================================== *
  *                     PROTOTYPES                      *
  * =================================================== */
 
-static OSThread	scheduler_thread;
-static Scheduler scheduler;
+static OSThread		scheduler_thread;
+static Scheduler	scheduler;
 
 /**
  * @brief Returns the framebuffer currently in use.
@@ -28,39 +28,37 @@ FrameBuffer* fb_current;
 
 Scheduler* init_scheduler()
 {
-	// Initialize globals
-	fb_current = NULL;
+	if (!scheduler.initialized)
+	{
+		// Initialize globals
+		fb_current = NULL;
 
-	// Initialize the scheduler
-	scheduler.initialized = FALSE;
-	scheduler.display = FALSE;
-	scheduler.is_changing_res = FALSE;
-	scheduler.reset = FALSE;
-	scheduler.crash = FALSE;
-	scheduler.current_status = SC_MSG_IDLE;
-	scheduler.task_gfx = NULL;
-	scheduler.task_audio = NULL;
-	scheduler.gfx_notify = NULL;
-	scheduler.audio_notify = NULL;
-	osCreateMesgQueue(&scheduler.queue, scheduler.msg, SC_MSG_COUNT);
+		// Initialize the scheduler
+		scheduler = (Scheduler){0};
+		osCreateMesgQueue(&scheduler.event_queue, scheduler.event_msg, SC_MSG_COUNT);
 
-	// Initialize the TV
-	osCreateViManager(OS_PRIORITY_VIMGR);
-	display_set(-1);
-	display_off();
+		// Initialize the TV
+		osCreateViManager(OS_PRIORITY_VIMGR);
+		display_set(-1);
+		display_off();
 
-	// Set the target framerate and register the event callbacks
-	osViSetEvent(&scheduler.queue, (OSMesg)SC_MSG_VSYNC, 1);
-	osSetEventMesg(OS_EVENT_SP, &scheduler.queue, (OSMesg)SC_MSG_SP);
-	osSetEventMesg(OS_EVENT_AI, &scheduler.queue, (OSMesg)SC_MSG_AUDIO);
-	osSetEventMesg(OS_EVENT_PRENMI, &scheduler.queue, (OSMesg)SC_MSG_PRENMI);
+		// Set the target framerate and register the event callbacks
+		osViSetEvent(&scheduler.event_queue, (OSMesg)SC_MSG_VSYNC, RETRACE_COUNT);
+		#ifdef ENABLE_AUDIO
+		osSetEventMesg(OS_EVENT_AI, &scheduler.event_queue, (OSMesg)SC_MSG_AUDIO);
+		#endif
+		osSetEventMesg(OS_EVENT_DP, &scheduler.event_queue, (OSMesg)SC_MSG_DP);
+		osSetEventMesg(OS_EVENT_SP, &scheduler.event_queue, (OSMesg)SC_MSG_SP);
+		osSetEventMesg(OS_EVENT_PRENMI, &scheduler.event_queue, (OSMesg)SC_MSG_PRENMI);
 
-	// Start the scheduler thread
-	osCreateThread(&scheduler_thread, ID_SCHEDULER, scheduler_threadfunc, NULL, REAL_STACK(SCHEDULER), PR_SCHEDULER);
-	osStartThread(&scheduler_thread);
+		// Start the scheduler thread
+		osCreateThread(&scheduler_thread, ID_SCHEDULER, scheduler_threadfunc, NULL, REAL_STACK(SCHEDULER), PR_SCHEDULER);
+		osStartThread(&scheduler_thread);
 
-	// Return the scheduler object
-	scheduler.initialized = TRUE;
+		// Return the scheduler object
+		scheduler.initialized = TRUE;
+	}
+
 	return &scheduler;
 }
 
@@ -70,7 +68,7 @@ static void scheduler_threadfunc(void *arg)
 
 	while (1)
 	{
-		osRecvMesg(&scheduler.queue, (OSMesg *)&msg, OS_MESG_BLOCK);
+		osRecvMesg(&scheduler.event_queue, (OSMesg *)&msg, OS_MESG_BLOCK);
 
 		// Ignore if the framebuffer resolution is being changed
 		if (scheduler.is_changing_res)
@@ -83,20 +81,34 @@ static void scheduler_threadfunc(void *arg)
 
 		switch (scheduler.current_status)
 		{
+			case SC_MSG_DP:
+				break;
+
 			case SC_MSG_VSYNC:
 				if (scheduler.gfx_notify != NULL)
 				{
-					osSendMesg(scheduler.gfx_notify, NULL, OS_MESG_BLOCK);
+					osSendMesg(scheduler.gfx_notify, &msg, OS_MESG_BLOCK);
 					scheduler.gfx_notify = NULL;
 				}
-				scheduler_vsync();
+
+				scheduler_video_pop();
 
 				if (scheduler.audio_notify != NULL)
-					osSendMesg(scheduler.audio_notify, NULL, OS_MESG_BLOCK);
+				{
+					osSendMesg(scheduler.audio_notify, &msg, OS_MESG_BLOCK);
+					scheduler.audio_notify = NULL;
+				}
 				break;
 
+			#ifdef ENABLE_AUDIO
 			case SC_MSG_AUDIO:
+				if (scheduler.audio_notify != NULL)
+				{
+					osSendMesg(scheduler.audio_notify, &msg, OS_MESG_BLOCK);
+					scheduler.audio_notify = NULL;
+				}
 				break;
+			#endif
 
 			case SC_MSG_PRENMI:
 				scheduler_prenmi();
@@ -104,7 +116,7 @@ static void scheduler_threadfunc(void *arg)
 
 			case SC_MSG_RCPDEAD:
 				display_set(0);
-				my_assert(FALSE, "RCP hang");
+				my_assert(FALSE, /* "RCP hang" */ "RCP is HUNG UP!!\nOh! MY GOD!!");
 				break;
 
 			default:
@@ -116,7 +128,7 @@ static void scheduler_threadfunc(void *arg)
 static void render_reset_screen()
 {
 	// Draw "restarting" screen
-	extern void clear_screen_raw(FrameBuffer *fb);
+	extern void clear_screen_raw();
 
 	if (scheduler.crash == TRUE)
 		return;
@@ -124,19 +136,16 @@ static void render_reset_screen()
 	osViBlack(FALSE);
 	debug_printf("[Scheduler] Rendering Pre-NMI screen to CPU\n");
 
-	if (fb_current != NULL)
+	if (console_set_fb())
 	{
-		clear_screen_raw(fb_current);
+		clear_screen_raw();
 		console_clear();
 		console_puts("%s", strings[0]);
-		console_draw_raw(fb_current);
-
-		osWritebackDCache(fb_current->address, fb_current->size);
-		osViSwapBuffer(fb_current->address);
+		console_draw_raw();
 	}
 }
 
-static void scheduler_vsync()
+static void scheduler_video_pop()
 {
 	extern bool is_framebuffer_ready();
 
@@ -188,7 +197,7 @@ static void scheduler_prenmi()
 	osViSetYScale(1.0);
 	// Stop threads go here
 	gfx_close();
-	audio_close();
+	// audio_close();
 	osSpTaskYield();
 	osAfterPreNMI();
 	scheduler.reset = TRUE;

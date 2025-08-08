@@ -19,7 +19,7 @@ static void fault_threadfunc(void *arg) __attribute__ ((noreturn));
 extern Scheduler scheduler;
 extern FrameBuffer *fb_current;
 extern void scheduler_discard_inactive_framebuffers();
-extern void tint_screen_raw(FrameBuffer *fb);
+extern void tint_screen_raw();
 
 // Fault thread
 static OSThread fault_thread;
@@ -35,7 +35,7 @@ static int faulted_thread_id = -1;
 static int faulted_thread_pri = -1;
 
 // Descriptions
-static char * custom_desc = "";
+static char custom_desc[256];
 static const char *const gCauseDesc[18] = {
     "Interrupt",
     "TLB modification",
@@ -59,6 +59,7 @@ static const char *const gCauseDesc[18] = {
 static int page;
 static bool update_fb = FALSE;
 static bool tinted_screen = FALSE;
+static bool show_debug = FALSE;
 
 /* =================================================== *
  *                      FUNCTIONS                      *
@@ -87,24 +88,44 @@ void crash()
 	*(long *)2 = 2;
 }
 
-void crash_msg(char *msg)
-{
-	if (msg != NULL && strlen(msg) > 0)
-		custom_desc = msg;
+extern int _Printf(void *(*copyfunc)(void *, const char *, size_t), void*, const char*, va_list);
 
-	crash();
+/*==============================
+	printf_handler
+	Handles printf memory copying
+	@param The buffer to copy the partial string to
+	@param The string to copy
+	@param The length of the string
+	@returns The end of the buffer that was written to
+==============================*/
+static void* printf_handler(void *buf, const char *str, size_t len)
+{
+	return ((char *) memcpy(buf, str, len) + len);
+}
+
+void crash_msg(const char *txt, ...)
+{
+	if (txt != NULL && strlen(txt) > 0)
+	{
+		va_list args;
+		va_start(args, txt);
+
+		_Printf(&printf_handler, custom_desc, txt, args);
+
+		va_end(args);
+
+		crash();
+	}
 }
 
 void render_fault_screen()
 {
-	osViBlack(FALSE);
-
 	if (!tinted_screen)
 	{
 		debug_printf("[Fatal] Rendering fault screen to CPU\n");
 		tinted_screen = TRUE;
 
-		tint_screen_raw(fb_current);
+		tint_screen_raw(NULL);
 	}
 
 	console_clear();
@@ -114,62 +135,64 @@ void render_fault_screen()
 		faulted_thread_id,
 		faulted_thread_pri
 	);
-	console_puts("%s", strlen(custom_desc) > 0 ? custom_desc : gCauseDesc[cause]);
-	console_puts("\n(L/R) P%d", (page + 1));
 
-	switch (page)
+	console_puts("\n%s", strlen(custom_desc) > 0 ? custom_desc : gCauseDesc[cause]);
+	if (show_debug)
 	{
-		case 0:
-			console_puts("at       0x%8x", (int)tc->at);
-			console_puts("v0       0x%8x", (int)tc->v0);
-			console_puts("v1       0x%8x", (int)tc->v1);
-			console_puts("a0       0x%8x", (int)tc->a0);
-			console_puts("a1       0x%8x", (int)tc->a1);
-			console_puts("a2       0x%8x", (int)tc->a2);
-			console_puts("a3       0x%8x", (int)tc->a3);
-			console_puts("..       ..........\n..       ..........");
-			break;
+		// console_puts("\npc: %x\nbadvaddr: %x", (int)tc->pc, (int)tc->badvaddr);
+		console_puts("\n(L/R) P%d           ", (page + 1));
 
-		case 1:
-			console_puts("t0       0x%8x", (int)tc->t0);
-			console_puts("t1       0x%8x", (int)tc->t1);
-			console_puts("t2       0x%8x", (int)tc->t2);
-			console_puts("t3       0x%8x", (int)tc->t3);
-			console_puts("t4       0x%8x", (int)tc->t4);
-			console_puts("t5       0x%8x", (int)tc->t5);
-			console_puts("t6       0x%8x", (int)tc->t6);
-			console_puts("t7       0x%8x", (int)tc->t7);
-			console_puts("..       ..........");
-			break;
+		switch (page)
+		{
+			case 0:
+				console_puts("at       0x%8x", (int)tc->at);
+				console_puts("v0       0x%8x", (int)tc->v0);
+				console_puts("v1       0x%8x", (int)tc->v1);
+				console_puts("a0       0x%8x", (int)tc->a0);
+				console_puts("a1       0x%8x", (int)tc->a1);
+				console_puts("a2       0x%8x", (int)tc->a2);
+				console_puts("a3       0x%8x", (int)tc->a3);
+				console_puts("..       ..........");
+				break;
 
-		case 2:
-			console_puts("s0       0x%8x", (int)tc->s0);
-			console_puts("s1       0x%8x", (int)tc->s1);
-			console_puts("s2       0x%8x", (int)tc->s2);
-			console_puts("s3       0x%8x", (int)tc->s3);
-			console_puts("s4       0x%8x", (int)tc->s4);
-			console_puts("s5       0x%8x", (int)tc->s5);
-			console_puts("s6       0x%8x", (int)tc->s6);
-			console_puts("s7       0x%8x", (int)tc->s7);
-			console_puts("..       ..........");
-			break;
+			case 1:
+				console_puts("t0       0x%8x", (int)tc->t0);
+				console_puts("t1       0x%8x", (int)tc->t1);
+				console_puts("t2       0x%8x", (int)tc->t2);
+				console_puts("t3       0x%8x", (int)tc->t3);
+				console_puts("t4       0x%8x", (int)tc->t4);
+				console_puts("t5       0x%8x", (int)tc->t5);
+				console_puts("t6       0x%8x", (int)tc->t6);
+				console_puts("t7       0x%8x", (int)tc->t7);
+				break;
 
-		case 3:
-			console_puts("t8       0x%8x", (int)tc->t8);
-			console_puts("t9       0x%8x", (int)tc->t9);
-			console_puts("gp       0x%8x", (int)tc->gp);
-			console_puts("sp       0x%8x", (int)tc->sp);
-			console_puts("s8       0x%8x", (int)tc->s8);
-			console_puts("ra       0x%8x", (int)tc->ra);
-			console_puts("pc       0x%8x", (int)tc->pc);
-			console_puts("badvaddr 0x%8x", (int)tc->badvaddr);
-			console_puts("..       ..........");
-			break;
+			case 2:
+				console_puts("s0       0x%8x", (int)tc->s0);
+				console_puts("s1       0x%8x", (int)tc->s1);
+				console_puts("s2       0x%8x", (int)tc->s2);
+				console_puts("s3       0x%8x", (int)tc->s3);
+				console_puts("s4       0x%8x", (int)tc->s4);
+				console_puts("s5       0x%8x", (int)tc->s5);
+				console_puts("s6       0x%8x", (int)tc->s6);
+				console_puts("s7       0x%8x", (int)tc->s7);
+				break;
+
+			case 3:
+				console_puts("t8       0x%8x", (int)tc->t8);
+				console_puts("t9       0x%8x", (int)tc->t9);
+				console_puts("gp       0x%8x", (int)tc->gp);
+				console_puts("sp       0x%8x", (int)tc->sp);
+				console_puts("s8       0x%8x", (int)tc->s8);
+				console_puts("ra       0x%8x", (int)tc->ra);
+				console_puts("pc       0x%8x", (int)tc->pc);
+				console_puts("badvaddr 0x%8x", (int)tc->badvaddr);
+				break;
+		}
 	}
-	console_draw_raw(fb_current);
+	else
+		console_puts("\nL+R for DEBUG");
 
-	osWritebackDCache(fb_current->address, fb_current->size);
-	osViSwapBuffer(fb_current->address);
+	console_draw_raw();
 }
 
 static void fault_threadfunc(void *arg)
@@ -191,7 +214,7 @@ static void fault_threadfunc(void *arg)
 		eventFlags |= (s32)msg;
 
 		// Set preconditions for initiating fault screen
-		thread_filter = thread != NULL && osGetThreadId(thread) != ID_AUDIO;
+		thread_filter = thread != NULL/* && osGetThreadId(thread) != ID_AUDIO*/;
 		msg_filter = ((eventFlags & 0x01) || (eventFlags & 0x02) || (eventFlags & 0x03));
 
 		if (thread_filter && msg_filter)
@@ -252,29 +275,37 @@ static void fault_threadfunc(void *arg)
 	debug_printf("pc: %x\n", (int)tc->pc);
 	debug_printf("badvaddr: %x\n", (int)tc->badvaddr);
 
-	osViSetSpecialFeatures(OS_VI_GAMMA_OFF);
-	osViBlack(FALSE);
-
 	// Halt everything
 	for (;;)
 	{
-		if (update_fb)
+		if (update_fb && console_set_fb())
 		{
 			render_fault_screen();
-			update_fb = FALSE;
+			// update_fb = FALSE;
 		}
 		read_controller();
 
-		if (controller[0].button == R_TRIG)
+		if (!show_debug)
 		{
-			page += 1;
-			update_fb = TRUE;
+			if (joypad_button(L, 0) && joypad_button(R, 0))
+			{
+				show_debug = TRUE;
+				update_fb = TRUE;
+			}
 		}
-
-		if (controller[0].button == L_TRIG)
+		else
 		{
-			page -= 1;
-			update_fb = TRUE;
+			if (joypad_button(R, 0))
+			{
+				page += 1;
+				update_fb = TRUE;
+			}
+
+			if (joypad_button(L, 0))
+			{
+				page -= 1;
+				update_fb = TRUE;
+			}
 		}
 
 		if (page < 0) { page = 3; }

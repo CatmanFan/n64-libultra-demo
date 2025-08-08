@@ -5,7 +5,7 @@
  *                       MACROS                        *
  * =================================================== */
 
-#define DMA_MSG_COUNT	200
+#define DMA_MSG_COUNT	50
 
 /* =================================================== *
  *                     PROTOTYPES                      *
@@ -13,9 +13,9 @@
 
 static OSMesg		msg_pi[DMA_MSG_COUNT];
 static OSMesgQueue	msg_queue_pi;
-static OSMesg		msg_dma;
+/*static*/ OSMesg		msg_dma;
 static OSIoMesg		msg_io_dma;
-static OSMesgQueue	msg_queue_dma;
+/*static*/ OSMesgQueue	msg_queue_dma;
 
 static bool			rom_reader_initialized = FALSE;
 
@@ -40,29 +40,72 @@ void init_reader()
 	}
 }
 
-void load_from_rom(void *ram_addr, void *rom_addr, u32 size)
+// #define READ_IN_CHUNKS
+
+void load_from_rom(void *ram_addr, char *rom_addr, int size)
 {
-	u32 src = (u32)rom_addr;
-    osWritebackDCache(ram_addr, size);
-    osInvalDCache(ram_addr, size);
+	#ifdef READ_IN_CHUNKS
+		void* ram_addr_temp = ram_addr;
+		u32 rom_addr_temp = (u32)rom_addr;
+		int read_size;
+		int size_remaining = size;
 
-    msg_io_dma.hdr.pri      = OS_MESG_PRI_NORMAL;
-    msg_io_dma.hdr.retQueue = &msg_queue_dma;
+		osWritebackDCacheAll();
+		osInvalDCache(ram_addr, size);
 
-    msg_io_dma.dramAddr     = ram_addr;
-    msg_io_dma.devAddr      = src;
-    msg_io_dma.size         = size;
+		while (size_remaining > 0)
+		{
+			read_size = size_remaining > 16384 ? 16384 : size_remaining;
 
-    osEPiStartDma(rom_handle, &msg_io_dma, OS_READ);
-    osRecvMesg(&msg_queue_dma, NULL, OS_MESG_BLOCK);
-    osInvalDCache(ram_addr, size);
+			msg_io_dma = (OSIoMesg)
+			{
+				.hdr = 
+				{
+					.pri = OS_MESG_PRI_NORMAL,
+					.retQueue = &msg_queue_dma,
+				},
+				.dramAddr = ram_addr_temp,
+				.devAddr = rom_addr_temp,
+				.size = read_size,
+			};
+
+			osEPiStartDma(rom_handle, &msg_io_dma, OS_READ);
+			osRecvMesg(&msg_queue_dma, &msg_dma, OS_MESG_BLOCK);
+			osInvalDCache(ram_addr_temp, read_size);
+
+			size_remaining -= read_size;
+			rom_addr_temp += read_size;
+			ram_addr_temp = (void*)((u8*)ram_addr_temp + read_size);
+		}
+	#else
+		// osWritebackDCache((void *)ram_addr, (s32)size);
+		// osInvalDCache((void *)ram_addr, (s32)size);
+		osWritebackDCacheAll();
+
+		msg_io_dma = (OSIoMesg)
+		{
+			.hdr = 
+			{
+				.pri = OS_MESG_PRI_NORMAL,
+				.retQueue = &msg_queue_dma,
+			},
+			.dramAddr = (void *)ram_addr,
+			.devAddr = (u32)rom_addr,
+			.size = (u32)size,
+		};
+
+		osEPiStartDma(rom_handle, &msg_io_dma, OS_READ);
+		(void) osRecvMesg(&msg_queue_dma, &msg_dma, OS_MESG_BLOCK);
+
+		// osInvalDCache((void *)ram_addr, (s32)size);
+	#endif
 }
 
 u8 get_rom_region()
 {
 	u8 rom_header[16];
 	u8 *rom_header_ptr = rom_header;
-	load_from_rom(rom_header_ptr, (u8 *)0x20, 16);
+	load_from_rom(rom_header_ptr, (char *)0x20, 16);
 	return rom_header_ptr[0x0E];
 }
 
@@ -76,7 +119,7 @@ void load_segment(char *offset, char *start, char *end)
 	msg_io_dma.hdr.retQueue = &msg_queue_dma;
 	msg_io_dma.dramAddr     = offset;
 	msg_io_dma.devAddr      = (u32)start;
-	msg_io_dma.size         = (u32)end-(u32)start;
+	msg_io_dma.size         = (u32)(end - start);
 
 	// Start DMA reader and wait for message
 	osEPiStartDma(rom_handle, &msg_io_dma, OS_READ);

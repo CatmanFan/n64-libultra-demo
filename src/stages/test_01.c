@@ -10,10 +10,10 @@
 #include "libultra-easy/controller.h"
 #include "libultra-easy/display.h"
 #include "libultra-easy/fault.h"
+// #include "libultra-easy/fs.h"
 #include "libultra-easy/rcp.h"
 // #include "libultra-easy/gfx_2d.h"
 #include "libultra-easy/gfx_3d.h"
-// #include "libultra-easy/fs.h"
 #include "libultra-easy/time.h"
 
 /* === Custom libraries === */
@@ -88,10 +88,10 @@ void test_01_update()
 
 	Vertex.rot.z += 0.1;
 
-	if (controller[0].button == A_BUTTON)
+	if (joypad_button(A, 0))
 		dither_mode = (dither_mode + 1) % 4;
 
-	if (controller[0].button == B_BUTTON)
+	if (joypad_button(B, 0))
 		request_stage_change("test_menu");
 }
 

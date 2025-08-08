@@ -26,7 +26,6 @@
 	/* Hardware */
 	#include "libultra-easy/fs.h"
 	#include "libultra-easy/scheduler.h"
-	#include "libultra-easy/stack.h"
 	#include "libultra-easy/time.h"
 
 	/* Fault screen */
@@ -34,7 +33,9 @@
 
 	/* User-defined configuration */
 	#include "config/global.h"
+	#include "config/stack.h"
 	#include "config/video.h"
+	#include "config/audio.h"
 	#include "config/unf.h"
 
 #endif

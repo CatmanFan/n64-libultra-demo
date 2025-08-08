@@ -48,4 +48,11 @@
  */
 #define GDL_SIZE 0x2000
 
+/**
+ * Configure how many seconds to wait before sending the "RCP hung" message.
+ */
+#define RCP_WAIT 1
+
+#define RETRACE_COUNT 1
+
 #endif

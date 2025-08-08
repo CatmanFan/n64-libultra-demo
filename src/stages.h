@@ -17,7 +17,7 @@
 	/**
 	 * @brief The list of stages made available for the software.
 	 */
-	extern StageInfo stages[6];
+	extern StageInfo stages[7];
 
 	/**
 	 * @brief Changes the target_stage value, effectively creating a
